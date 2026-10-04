@@ -1,0 +1,20 @@
+{
+  "name": "show",
+  "version": "1.0.0",
+  "description": "TikTok Live dashboard + OBS widgets",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "tiktok-live-connector": "^2.4.3",
+    "ws": "^8.21.2",
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5"
+  }
+}

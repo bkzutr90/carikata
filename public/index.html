@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cari Kata Tersembunyi — TikTok Live</title>
+<style>
+:root{--bg:#0b0b10;--card:#17171f;--tx:#fff;--mut:#8b8b9a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,Segoe UI,Arial,sans-serif}
+#app{display:flex;gap:16px;justify-content:center;align-items:flex-start;padding:16px}
+#ctl{width:260px;background:var(--card);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;position:sticky;top:16px}
+#ctl h2{margin:0 0 4px;font-size:16px}#ctl input,#ctl button{padding:9px 10px;border-radius:8px;border:0;font:inherit}
+#ctl input{background:#0b0b10;color:#fff;border:1px solid #2a2a36}#ctl button{background:#fe2c55;color:#fff;font-weight:700;cursor:pointer}
+#ctl button.g{background:#2a2a36}#st{font-size:13px;color:var(--mut)}#st b{color:#2ee66b}
+#stage{width:min(560px,100vw - 8px);display:flex;flex-direction:column;gap:8px;position:relative}
+#chips{display:flex;gap:6px;height:44px;overflow:hidden}
+.chip{flex:1;min-width:0;display:flex;align-items:center;gap:6px;border-radius:10px;padding:4px 8px;color:#111;font-weight:800;font-size:13px;animation:pop .35s}
+.chip.empty{background:#1d1d27}.chip img{width:26px;height:26px;border-radius:50%;object-fit:cover}
+.chip small{display:block;font-weight:600;font-size:10px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .p{margin-left:auto;background:#0003;border-radius:8px;padding:1px 5px;font-size:10px}
+h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shadow:0 2px 6px #000}h1 span{color:#ffd93b}
+#hint{margin:0;text-align:center;font-size:12px;font-weight:700;color:#ff8ac0}
+#board{display:grid;grid-template-columns:20px repeat(15,1fr);gap:2px;position:relative}
+.lbl{font-size:11px;color:var(--mut);display:flex;align-items:center;justify-content:center}
+.c{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(13px,3.6vw,20px);background:#14141c;border-radius:4px;color:#f2f2f2;background-size:cover;background-position:center;transition:background .3s}
+.c.f{color:#111;animation:pop .4s}.c.av{color:transparent}.c.ping{animation:ping 1.2s;outline:2px solid #fff}
+#done{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:32px;font-weight:900;text-shadow:0 3px 12px #000;background:#0008;border-radius:8px}
+#lb{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;font-size:12px}
+.row{display:flex;align-items:center;gap:6px;min-width:0}.row img,.row i{width:20px;height:20px;border-radius:50%;background:#333;flex:none;object-fit:cover}
+.row b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.row em{color:#ffd93b;font-style:normal;font-weight:800}
+#chat{display:flex;flex-direction:column;gap:4px;min-height:120px;justify-content:flex-end}
+.m{align-self:flex-start;background:#0009;border-radius:14px;padding:5px 10px;font-size:13px;max-width:90%;animation:pop .25s}.m b{color:#aaa;margin-right:5px}.m.g{background:#7a2d00cc}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}@keyframes ping{50%{transform:scale(1.25);background:#fff;color:#000}}
+body.ov{background:transparent}body.ov #ctl{display:none}
+@media(max-width:880px){#app{flex-direction:column;align-items:center}#ctl{position:static;width:min(560px,100%)}}
+</style></head>
+<body><div id="app">
+<aside id="ctl">
+  <h2>🎮 TikTok Live Control</h2>
+  <input id="u" placeholder="@username TikTok (harus sedang LIVE)">
+  <button id="bc">Hubungkan</button><button id="bd" class="g">Putus</button>
+  <button id="bn" class="g">Ronde baru</button><button id="br" class="g">Reset skor</button>
+  <div id="st">Status: idle</div>
+  <hr style="border-color:#2a2a36;width:100%">
+  <input id="sn" placeholder="Nama tester"><input id="sx" placeholder="Ketik kata / C7 lalu Enter">
+  <div style="font-size:12px;color:var(--mut)">Widget OBS: <code>/?overlay=1</code> (Browser Source, 560×1100)</div>
+</aside>
+<main id="stage">
+  <div id="chips"></div>
+  <h1>CARI KATA TERSEMBUNYI <span id="cnt">0/20</span></h1>
+  <p id="hint">KETIK KATA YANG KAMU LIHAT, ATAU KOTAK SEPERTI C7</p>
+  <div id="board"></div><div id="done">PAPAN SELESAI</div>
+  <div id="lb"></div><div id="chat"></div>
+</main></div>
+<script>
+const $=id=>document.getElementById(id), ov=new URLSearchParams(location.search).has('overlay');
+if(ov)document.body.classList.add('ov');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const post=(p,b)=>fetch('/api/'+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
+let chips=[];
+
+function drawBoard(s){
+  const b=$('board');b.innerHTML='<div></div>'+Array.from({length:15},(_,i)=>`<div class="lbl">${i+1}</div>`).join('');
+  s.grid.forEach((row,r)=>{b.insertAdjacentHTML('beforeend',`<div class="lbl">${String.fromCharCode(65+r)}</div>`);
+    row.forEach((ch,c)=>b.insertAdjacentHTML('beforeend',`<div class="c" id="c${r}_${c}">${ch}</div>`));});
+}
+function render(s){
+  if(!$('c0_0')||$('board').dataset.r!=s.round){drawBoard(s);$('board').dataset.r=s.round;chips=[];renderChips();}
+  s.grid.forEach((row,r)=>row.forEach((_,c)=>{const e=$(`c${r}_${c}`);e.className='c';e.style.background='';e.style.backgroundImage='';}));
+  s.found.forEach(f=>f.cells.forEach(([r,c],i)=>{const e=$(`c${r}_${c}`);e.classList.add('f');e.style.background=f.user.color;
+    if(i===0&&f.user.avatar){e.classList.add('av');e.style.backgroundImage=`url(${f.user.avatar})`;}}));
+  $('cnt').textContent=`${s.found.length}/${s.total}`;
+  $('done').style.display=s.done?'flex':'none';
+  $('lb').innerHTML=s.top.map(t=>`<div class="row">${t.avatar?`<img src="${esc(t.avatar)}">`:'<i></i>'}<b>${esc(t.nick)}</b><em>${t.points}</em></div>`).join('');
+}
+function renderChips(){
+  const list=chips.slice(-4).reverse();
+  $('chips').innerHTML=Array.from({length:4},(_,i)=>{const f=list[i];
+    return f?`<div class="chip" style="background:${f.user.color}">${f.user.avatar?`<img src="${esc(f.user.avatar)}">`:''}<div><div>${esc(f.word)}</div><small>${esc(f.user.nick)}</small></div><span class="p">+10</span></div>`:'<div class="chip empty"></div>';}).join('');
+}
+function addMsg(html,cls=''){const c=$('chat');c.insertAdjacentHTML('beforeend',`<div class="m ${cls}">${html}</div>`);while(c.children.length>6)c.firstChild.remove();}
+
+function connectWS(){
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
+    if(type==='state')render(data);
+    if(type==='found'){chips.push({word:data.word,user:data.user});renderChips();}
+    if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
+    if(type==='gift')addMsg(`🎁 <b>${esc(data.user.nick)}</b>kirim ${esc(data.gift||'gift')} x${data.count}`,'g');
+    if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}}
+    if(type==='status'){$('st').innerHTML=`Status: <b>${data.state}</b>${data.username?' @'+esc(data.username):''}<br>👁 ${data.viewers||0} · ❤ ${data.likes||0}${data.error?'<br>⚠ '+esc(data.error):''}`;}
+  };
+  ws.onclose=()=>setTimeout(connectWS,2000);
+}
+connectWS();
+$('bc').onclick=()=>post('connect',{username:$('u').value});
+$('bd').onclick=()=>post('disconnect');$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
+$('sx').onkeydown=e=>{if(e.key==='Enter'&&e.target.value){post('sim',{nick:$('sn').value||'tester',text:e.target.value});e.target.value='';}};
+</script></body></html>
