@@ -1,33 +1,49 @@
 <!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8"><title>Leaderboard</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:transparent;font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff}
-#w{width:420px;padding:14px;border-radius:18px;background:rgba(10,10,16,.78);backdrop-filter:blur(6px)}
-h1{margin:0 0 10px;font-size:18px;letter-spacing:1px;display:flex;align-items:center;gap:8px}
-#l{position:relative}
-.r{display:flex;align-items:center;gap:10px;height:44px;padding:0 10px;margin-bottom:6px;border-radius:12px;background:#1a1a24;position:absolute;left:0;right:0;transition:top .5s ease,background .4s}
+*{box-sizing:border-box}body{margin:0;background:transparent;font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff;overflow:hidden}
+#w{width:100%;padding:12px 14px;border-radius:18px;background:rgba(10,10,16,.78);backdrop-filter:blur(6px)}
+#w.nobg{background:none;backdrop-filter:none;padding:0}
+h1{margin:0 0 8px;font-size:15px;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+#l{position:relative;--g:8px}
+.r{position:absolute;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:12px;background:#1a1a24;
+  transition:left .5s ease,top .5s ease,background .4s;overflow:hidden}
 .r.flash{background:#3a2d00}
-.n{width:22px;text-align:center;font-weight:900;color:#8b8b9a}
-.r:nth-child(1) .n{color:#ffd93b}
-.av{width:30px;height:30px;border-radius:50%;background:#333 center/cover;flex:none}
-.nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:15px}
-.p{font-weight:900;color:#ffd93b;font-size:16px}.p small{color:#9a8a50;font-weight:600;font-size:11px;margin-left:3px}
+.n{width:20px;text-align:center;font-weight:900;font-size:15px;color:#8b8b9a;flex:none}
+.r[data-rank="1"] .n{color:#ffd93b}.r[data-rank="2"] .n{color:#d5dbe6}.r[data-rank="3"] .n{color:#ff9b54}
+.av{width:32px;height:32px;border-radius:50%;background:#333 center/cover;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#aaa}
+.t{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:13px;line-height:1.2}
+.p{font-weight:900;color:#ffd93b;font-size:14px;line-height:1.2}.p small{color:#9a8a50;font-weight:600;font-size:10px;margin-left:3px}
 </style></head><body>
-<div id="w"><h1>🏆 LEADERBOARD</h1><div id="l"></div></div>
+<div id="w"><h1 id="h">🏆 LEADERBOARD</h1><div id="l"></div></div>
 <script>
-const q=new URLSearchParams(location.search), N=Math.min(20,+q.get('n')||10), H=50;
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Opsi URL: ?n=10 (jumlah)  &cols=5 (kolom per baris)  &title=0 (tanpa judul)  &bg=0 (tanpa latar)
+const q=new URLSearchParams(location.search);
+const N=Math.min(20,Math.max(1,+q.get('n')||10)), COLS=Math.max(1,+q.get('cols')||5), H=52, G=8;
+if(q.get('title')==='0')document.getElementById('h').style.display='none';
+if(q.get('bg')==='0')document.getElementById('w').classList.add('nobg');
 const L=document.getElementById('l'), rows=new Map(), prev=new Map();
+function place(el,i){
+  const c=i%COLS, r=Math.floor(i/COLS);
+  el.style.left=`calc(${c} * ((100% + ${G}px) / ${COLS}))`;
+  el.style.width=`calc((100% + ${G}px) / ${COLS} - ${G}px)`;
+  el.style.top=(r*(H+G))+'px'; el.style.height=H+'px';
+}
 function render(top){
-  top=top.slice(0,N); L.style.height=top.length*H+'px';
+  top=top.slice(0,N);
+  const nRows=Math.ceil(Math.max(1,top.length)/COLS);
+  L.style.height=(nRows*(H+G)-G)+'px';
   const keep=new Set(top.map(t=>t.id||t.nick));
   rows.forEach((el,k)=>{if(!keep.has(k)){el.remove();rows.delete(k);}});
   top.forEach((t,i)=>{
     const k=t.id||t.nick; let el=rows.get(k);
-    if(!el){el=document.createElement('div');el.className='r';el.style.top=(i*H)+'px';
-      el.innerHTML='<div class="n"></div><div class="av"></div><div class="nm"></div><div class="p"></div>';L.appendChild(el);rows.set(k,el);}
-    el.style.top=(i*H)+'px'; el.querySelector('.n').textContent=i+1;
-    if(t.avatar)el.querySelector('.av').style.backgroundImage=`url(${t.avatar})`;
+    if(!el){el=document.createElement('div');el.className='r';
+      el.innerHTML='<div class="n"></div><div class="av"></div><div class="t"><div class="nm"></div><div class="p"></div></div>';
+      L.appendChild(el);rows.set(k,el);}
+    place(el,i); el.dataset.rank=i+1; el.querySelector('.n').textContent=i+1;
+    const av=el.querySelector('.av');
+    if(t.avatar){av.style.backgroundImage=`url(${t.avatar})`;av.textContent='';}else av.textContent=(t.nick||'?').charAt(0).toUpperCase();
     el.querySelector('.nm').textContent=t.nick;
     el.querySelector('.p').innerHTML=t.points+'<small>poin</small>';
     if(prev.has(k)&&prev.get(k)!==t.points){el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),700);}
