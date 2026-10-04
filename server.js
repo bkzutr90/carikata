@@ -9,6 +9,7 @@ const { Game } = require('./lib/game');
 const { loadWords, LEVELS, DEFAULT_LEVEL } = require('./lib/words');
 
 const PORT = process.env.PORT || 3000;
+const DEBUG = !!process.env.DEBUG_TIKTOK;
 const app = express();
 app.use(cors(), express.json(), express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
@@ -21,13 +22,18 @@ const broadcast = (type, data) => wss.clients.forEach(ws => send(ws, type, data)
 const setStatus = p => { Object.assign(status, p); broadcast('status', status); };
 wss.on('connection', ws => { send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status); });
 
-// Normalisasi data user (kompatibel dgn berbagai bentuk payload)
+// Normalisasi data user (kompatibel dgn payload v2 dan bentuk lama)
 const getUser = d => {
   const u = d.user || d;
   return {
-    id: String(u.userId || u.uniqueId || u.nickname),
-    nick: u.nickname || u.uniqueId || 'anon',
-    avatar: u.profilePicture?.url?.[0] || u.profilePictureUrl || '',
+    id: String(u.userId || u.uniqueId || u.displayId || u.nickname),
+    nick: u.nickname || u.uniqueId || u.displayId || 'anon',
+    avatar:
+      u.avatarThumb?.urlList?.[0] ||
+      u.profilePicture?.urls?.[0] ||
+      u.profilePicture?.url?.[0] ||
+      u.profilePictureUrl ||
+      '',
   };
 };
 
@@ -68,13 +74,25 @@ function disconnect() { clearTimeout(retry); wantUser = ''; try { conn?.disconne
 async function connect(username) {
   username = String(username || '').replace(/^@/, '').trim();
   if (!username) return;
-  try { conn?.disconnect(); } catch {}
+  try { conn?.removeAllListeners(); conn?.disconnect(); } catch {}
   clearTimeout(retry); wantUser = username;
   setStatus({ state: 'connecting', username, error: '' });
-  conn = new TikTokLiveConnection(username, { sessionId: process.env.SESSION_ID || undefined });
 
-  conn.on(WebcastEvent.CHAT, d => handleChat(getUser(d), d.comment || ''));
+  // Selalu kirim objek options eksplisit.
+  // SIGN_API_KEY: API key gratis dari eulerstream.com (tanpa ini kena rate-limit sign server).
+  // SESSION_ID: cookie "sessionid" akun TikTok yang login (opsional tapi disarankan).
+  conn = new TikTokLiveConnection(username, {
+    processInitialData: false,
+    signApiKey: process.env.SIGN_API_KEY || undefined,
+    sessionId: process.env.SESSION_ID || undefined,
+  });
+
+  conn.on(WebcastEvent.CHAT, d => {
+    if (DEBUG) console.log('[DEBUG chat]', JSON.stringify(d));
+    handleChat(getUser(d), d.comment ?? d.content ?? '');
+  });
   conn.on(WebcastEvent.GIFT, d => {
+    if (DEBUG) console.log('[DEBUG gift]', JSON.stringify(d));
     const type = d.giftType ?? d.giftDetails?.giftType;
     if (type === 1 && !d.repeatEnd) return; // gift beruntun: tunggu streak selesai
     handleGift(getUser(d), d.giftName || d.giftDetails?.giftName || 'gift',
@@ -84,11 +102,17 @@ async function connect(username) {
   conn.on(WebcastEvent.ROOM_USER, d => setStatus({ viewers: d.viewerCount ?? 0 }));
   conn.on(WebcastEvent.STREAM_END, () => setStatus({ state: 'ended' }));
   conn.on('disconnected', () => { if (wantUser) { setStatus({ state: 'reconnecting' }); retry = setTimeout(() => connect(wantUser), 5000); } });
-  conn.on('error', e => console.error('[tiktok]', e?.message || e));
-  conn.on(WebcastEvent.CHAT, d => console.log('[raw chat]', JSON.stringify(d, null, 1)));
+  conn.on('error', e => console.error('[tiktok]', e?.info || e?.message || e));
 
-  try { await conn.connect(); setStatus({ state: 'connected' }); }
-  catch (e) { console.error('[connect]', e?.message || e); setStatus({ state: 'error', error: String(e?.message || e) }); wantUser = ''; }
+  try {
+    const st = await conn.connect();
+    console.log('[connected] roomId:', st?.roomId);
+    setStatus({ state: 'connected' });
+  } catch (e) {
+    console.error('[connect]', e?.message || e);
+    setStatus({ state: 'error', error: String(e?.message || e) });
+    wantUser = '';
+  }
 }
 
 
