@@ -11,8 +11,10 @@
 #ctl input{background:#0b0b10;color:#fff;border:1px solid #2a2a36}#ctl button{background:#fe2c55;color:#fff;font-weight:700;cursor:pointer}
 #ctl button.g{background:#2a2a36}#st{font-size:13px;color:var(--mut)}#st b{color:#2ee66b}
 #stage{width:min(560px,100vw - 8px);display:flex;flex-direction:column;gap:8px;position:relative}
-#chips{display:flex;gap:6px;height:44px;overflow:hidden}
-.chip{flex:1;min-width:0;display:flex;align-items:center;gap:6px;border-radius:10px;padding:4px 8px;color:#111;font-weight:800;font-size:13px;animation:pop .35s}
+#chips{position:relative;height:44px;overflow:hidden;--cw:130px}
+#track{display:flex;gap:6px;position:absolute;left:0;top:0;height:100%;will-change:transform}
+.chip{flex:0 0 var(--cw);width:var(--cw);min-width:0;display:flex;align-items:center;gap:6px;border-radius:10px;padding:4px 8px;color:#111;font-weight:800;font-size:13px;overflow:hidden}
+.chip.new{animation:pop .5s}.chip>div{min-width:0}.chip>div>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip.empty{background:#1d1d27}.chip img{width:26px;height:26px;border-radius:50%;object-fit:cover}
 .chip small{display:block;font-weight:600;font-size:10px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip .p{margin-left:auto;background:#0003;border-radius:8px;padding:1px 5px;font-size:10px}
@@ -37,29 +39,61 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <h2>🎮 TikTok Live Control</h2>
   <input id="u" placeholder="@username TikTok (harus sedang LIVE)">
   <button id="bc">Hubungkan</button><button id="bd" class="g">Putus</button>
+  <select id="lv" style="padding:9px 10px;border-radius:8px;border:0;background:#2a2a36;color:#fff;font:inherit"><option value="mudah">Kata: Mudah</option><option value="sedang">Kata: Sedang</option><option value="sulit">Kata: Sulit</option></select>
   <button id="bn" class="g">Ronde baru</button><button id="br" class="g">Reset skor</button>
   <div id="st">Status: idle</div>
   <hr style="border-color:#2a2a36;width:100%">
-  <input id="sn" placeholder="Nama tester"><input id="sx" placeholder="Ketik kata / C7 lalu Enter">
+  <input id="sn" placeholder="Nama tester"><input id="sx" placeholder="Ketik kata / C7 lalu Enter"><button id="sg" class="g">🎁 Simulasi gift</button>
+  <label style="font-size:13px"><input type="checkbox" id="fx" checked> 🔔 Efek suara kata ketemu</label>
+  <label style="font-size:12px;color:var(--mut)">Volume efek <input type="range" id="fv" min="0" max="1" step="0.05" value="0.7" style="width:100%"></label>
   <label style="font-size:13px"><input type="checkbox" id="tt"> 🔊 Bacakan komentar (TTS)</label>
   <label style="font-size:13px"><input type="checkbox" id="tn"> Sebut nama penonton</label>
   <label style="font-size:12px;color:var(--mut)">Volume <input type="range" id="tv" min="0" max="1" step="0.05" value="1" style="width:100%"></label>
-  <div style="font-size:12px;color:var(--mut);line-height:1.6">Widget OBS (Browser Source):<br>Game: <code>/?overlay=1</code> (560×1100)<br>Leaderboard: <code>/leaderboard.html</code> (440×600)<br>Suara: <code>/tts.html</code> (centang "Kontrol audio via OBS")</div>
+  <div style="font-size:12px;color:var(--mut);line-height:1.6">Widget OBS (Browser Source):<br>Game: <code>/?overlay=1</code> (560×1100)<br>Leaderboard: <code>/leaderboard.html</code> (440×600)<br>Opsi game: <code>&amp;sfx=0</code> (tanpa efek), <code>&amp;speed=30</code> (kecepatan chip)<br>Suara: <code>/tts.html</code> (centang "Kontrol audio via OBS")</div>
 </aside>
 <main id="stage">
-  <div id="chips"></div>
+  <div id="chips"><div id="track"></div></div>
   <h1>CARI KATA TERSEMBUNYI <span id="cnt">0/20</span></h1>
   <p id="hint">KETIK KATA YANG KAMU LIHAT, ATAU KOTAK SEPERTI C7</p>
   <div id="board"></div><div id="done">PAPAN SELESAI</div>
   <div id="lb"></div><div id="chat"></div>
 </main></div>
 <script src="/tts.js"></script>
+<script src="/sfx.js"></script>
 <script>
 const $=id=>document.getElementById(id), ov=new URLSearchParams(location.search).has('overlay');
 if(ov)document.body.classList.add('ov');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const post=(p,b)=>fetch('/api/'+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
-let chips=[];
+const Q=new URLSearchParams(location.search);
+if(ov){SFX.enable(Q.get('sfx')!=='0');if(Q.has('sfxvol'))SFX.setVolume(+Q.get('sfxvol'));}
+// ---- chip kata: berjalan pelan (marquee) ----
+const GAP=6,RING=12,SPEED=+Q.get('speed')||30; // px per detik
+let ring=Array(RING).fill(null),cw=130,off=0;
+const slotW=()=>cw+GAP;
+function sizeChips(){cw=($('chips').clientWidth-3*GAP)/4;$('chips').style.setProperty('--cw',cw+'px');}
+function chipHtml(f,isNew){
+  if(!f)return '<div class="chip empty"></div>';
+  const u=f.user;
+  return `<div class="chip${isNew?' new':''}" style="background:${u.color}">${u.avatar?`<img src="${esc(u.avatar)}">`:''}<div><div>${u.via==='gift'?'🎁 ':''}${esc(f.word)}</div><small>${esc(u.nick)}</small></div><span class="p">+10</span></div>`;
+}
+function drawRing(newWord){const h=ring.map(f=>chipHtml(f,!!f&&f.word===newWord)).join('');$('track').innerHTML=h+h;}
+// taruh chip baru di slot kosong terdekat tepat di luar tepi kanan layar, jadi masuk dari kanan
+function placeChip(f){
+  if(ring.some(x=>x&&x.word===f.word))return false;
+  if(!ring.includes(null)){let o=0;ring.forEach((x,i)=>{if(x.at<ring[o].at)o=i;});ring[o]=null;} // penuh: buang yang paling lama
+  const n=ring.length,start=(Math.floor(off/slotW())+5)%n;
+  for(let k=0;k<n;k++){const i=(start+k)%n;if(!ring[i]){ring[i]=f;return true;}}
+  return false;
+}
+function resetChips(){ring=Array(RING).fill(null);drawRing();}
+let lastT=performance.now();
+function tick(t){
+  const dt=Math.min(.1,(t-lastT)/1000);lastT=t;
+  const P=ring.length*slotW();off=(off+SPEED*dt)%P;
+  $('track').style.transform=`translateX(${-off}px)`;requestAnimationFrame(tick);
+}
+sizeChips();addEventListener('resize',sizeChips);drawRing();requestAnimationFrame(tick);
 
 function drawBoard(s){
   const b=$('board');b.innerHTML='<div></div>'+Array.from({length:15},(_,i)=>`<div class="lbl">${i+1}</div>`).join('');
@@ -67,18 +101,18 @@ function drawBoard(s){
     row.forEach((ch,c)=>b.insertAdjacentHTML('beforeend',`<div class="c" id="c${r}_${c}">${ch}</div>`));});
 }
 function render(s){
-  if(!$('c0_0')||$('board').dataset.r!=s.round){drawBoard(s);$('board').dataset.r=s.round;chips=[];renderChips();}
+  if(!$('c0_0')||$('board').dataset.r!=s.round){drawBoard(s);$('board').dataset.r=s.round;resetChips();}
   s.grid.forEach((row,r)=>row.forEach((_,c)=>{const e=$(`c${r}_${c}`);e.className='c';e.style.background='';e.style.backgroundImage='';}));
   s.found.forEach(f=>f.cells.forEach(([r,c],i)=>{const e=$(`c${r}_${c}`);e.classList.add('f');e.style.background=f.user.color;
     if(i===0&&f.user.avatar){e.classList.add('av');e.style.backgroundImage=`url(${f.user.avatar})`;}}));
+  syncChips(s);
   $('cnt').textContent=`${s.found.length}/${s.total}`;
   $('done').style.display=s.done?'flex':'none';
   $('lb').innerHTML=s.top.map(t=>`<div class="row">${t.avatar?`<img src="${esc(t.avatar)}">`:'<i></i>'}<b>${esc(t.nick)}</b><em>${t.points}</em></div>`).join('');
 }
-function renderChips(){
-  const list=chips.slice(-4).reverse();
-  $('chips').innerHTML=Array.from({length:4},(_,i)=>{const f=list[i];
-    return f?`<div class="chip" style="background:${f.user.color}">${f.user.avatar?`<img src="${esc(f.user.avatar)}">`:''}<div><div>${esc(f.word)}</div><small>${esc(f.user.nick)}</small></div><span class="p">+10</span></div>`:'<div class="chip empty"></div>';}).join('');
+function syncChips(s){
+  const added=s.found.filter(f=>placeChip({word:f.word,user:f.user,at:f.user.at})).map(f=>f.word);
+  if(added.length)drawRing(added.length===1?added[0]:null);
 }
 function addMsg(html,cls=''){const c=$('chat');c.insertAdjacentHTML('beforeend',`<div class="m ${cls}">${html}</div>`);while(c.children.length>6)c.firstChild.remove();}
 
@@ -86,18 +120,23 @@ function connectWS(){
   const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
     if(type==='state')render(data);
-    if(type==='found'){chips.push({word:data.word,user:data.user});renderChips();}
+    if(type==='level')$('lv').value=data;
+    if(type==='found')data.via==='gift'?SFX.gift():SFX.reveal();
+    if(type==='done')SFX.done();
     if(type==='chat'){if(!ov)TTS.say(data.user.nick,data.text);}
     if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
     if(type==='gift')addMsg(`🎁 <b>${esc(data.user.nick)}</b>kirim ${esc(data.gift||'gift')} x${data.count}`,'g');
-    if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}}
+    if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}SFX.tick();}
     if(type==='status'){$('st').innerHTML=`Status: <b>${data.state}</b>${data.username?' @'+esc(data.username):''}<br>👁 ${data.viewers||0} · ❤ ${data.likes||0}${data.error?'<br>⚠ '+esc(data.error):''}`;}
   };
   ws.onclose=()=>setTimeout(connectWS,2000);
 }
 connectWS();
 $('bc').onclick=()=>post('connect',{username:$('u').value});
-$('bd').onclick=()=>post('disconnect');$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
+$('bd').onclick=()=>post('disconnect');$('lv').onchange=e=>post('difficulty',{level:e.target.value});$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
+$('fx').onchange=e=>SFX.enable(e.target.checked);$('fv').oninput=e=>SFX.setVolume(+e.target.value);
+$('sg').onclick=()=>post('sim-gift',{nick:$('sn').value||'tester',gift:'Rose',diamonds:1,count:1});
+addEventListener('pointerdown',()=>SFX.unlock(),{once:true});addEventListener('keydown',()=>SFX.unlock(),{once:true});
 $('tt').onchange=e=>TTS.enable(e.target.checked);$('tn').onchange=e=>TTS.readNick(e.target.checked);$('tv').oninput=e=>TTS.setVolume(+e.target.value);
 $('sx').onkeydown=e=>{if(e.key==='Enter'&&e.target.value){post('sim',{nick:$('sn').value||'tester',text:e.target.value});e.target.value='';}};
 </script></body></html>
