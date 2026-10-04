@@ -23,7 +23,7 @@ h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shad
 #board{display:grid;grid-template-columns:20px repeat(15,1fr);gap:2px;position:relative}
 .lbl{font-size:11px;color:var(--mut);display:flex;align-items:center;justify-content:center}
 .c{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(13px,3.6vw,20px);background:#14141c;border-radius:4px;color:#f2f2f2;background-size:cover;background-position:center;transition:background .3s}
-.c.f{color:#111;animation:pop .4s}.c.av{color:transparent}.c.ping{animation:ping 1.2s;outline:2px solid #fff}
+.c.f{color:#111;animation:pop .4s}.c.ping{animation:ping 1.2s;outline:2px solid #fff}
 #done{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:32px;font-weight:900;text-shadow:0 3px 12px #000;background:#0008;border-radius:8px}
 #lb{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;font-size:12px}
 .row{display:flex;align-items:center;gap:6px;min-width:0}.row img,.row i{width:20px;height:20px;border-radius:50%;background:#333;flex:none;object-fit:cover}
@@ -104,18 +104,6 @@ function render(s){
   if(!$('c0_0')||$('board').dataset.r!=s.round){drawBoard(s);$('board').dataset.r=s.round;resetChips();}
   s.grid.forEach((row,r)=>row.forEach((_,c)=>{const e=$(`c${r}_${c}`);e.className='c';e.style.background='';e.style.backgroundImage='';}));
   s.found.forEach(f=>f.cells.forEach(([r,c])=>{const e=$(`c${r}_${c}`);e.classList.add('f');e.style.background=f.user.color;}));
-  // foto penemu: taruh di sel tepat sebelum huruf pertama kata
-  // (arah kata dihitung dari 2 sel pertama; kalau kata mulai di tepi papan, pakai sel setelah huruf terakhir)
-  const R=s.grid.length,C=s.grid[0].length;
-  s.found.forEach(f=>{
-    if(!f.user.avatar||f.cells.length<2)return;
-    const a=f.cells[0],b=f.cells[1],z=f.cells[f.cells.length-1];
-    const dr=b[0]-a[0],dc=b[1]-a[1];
-    const p=[[a[0]-dr,a[1]-dc],[z[0]+dr,z[1]+dc]].find(([r,c])=>r>=0&&c>=0&&r<R&&c<C);
-    if(!p)return;
-    const e=$(`c${p[0]}_${p[1]}`);
-    e.classList.add('av');e.style.backgroundImage=`url(${f.user.avatar})`;
-  });
   syncChips(s);
   $('cnt').textContent=`${s.found.length}/${s.total}`;
   $('done').style.display=s.done?'flex':'none';
