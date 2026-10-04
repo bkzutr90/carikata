@@ -41,7 +41,10 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <div id="st">Status: idle</div>
   <hr style="border-color:#2a2a36;width:100%">
   <input id="sn" placeholder="Nama tester"><input id="sx" placeholder="Ketik kata / C7 lalu Enter">
-  <div style="font-size:12px;color:var(--mut)">Widget OBS: <code>/?overlay=1</code> (Browser Source, 560×1100)</div>
+  <label style="font-size:13px"><input type="checkbox" id="tt"> 🔊 Bacakan komentar (TTS)</label>
+  <label style="font-size:13px"><input type="checkbox" id="tn"> Sebut nama penonton</label>
+  <label style="font-size:12px;color:var(--mut)">Volume <input type="range" id="tv" min="0" max="1" step="0.05" value="1" style="width:100%"></label>
+  <div style="font-size:12px;color:var(--mut);line-height:1.6">Widget OBS (Browser Source):<br>Game: <code>/?overlay=1</code> (560×1100)<br>Leaderboard: <code>/leaderboard.html</code> (440×600)<br>Suara: <code>/tts.html</code> (centang "Kontrol audio via OBS")</div>
 </aside>
 <main id="stage">
   <div id="chips"></div>
@@ -50,6 +53,7 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <div id="board"></div><div id="done">PAPAN SELESAI</div>
   <div id="lb"></div><div id="chat"></div>
 </main></div>
+<script src="/tts.js"></script>
 <script>
 const $=id=>document.getElementById(id), ov=new URLSearchParams(location.search).has('overlay');
 if(ov)document.body.classList.add('ov');
@@ -83,6 +87,7 @@ function connectWS(){
   ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
     if(type==='state')render(data);
     if(type==='found'){chips.push({word:data.word,user:data.user});renderChips();}
+    if(type==='chat'){if(!ov)TTS.say(data.user.nick,data.text);}
     if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
     if(type==='gift')addMsg(`🎁 <b>${esc(data.user.nick)}</b>kirim ${esc(data.gift||'gift')} x${data.count}`,'g');
     if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}}
@@ -93,5 +98,6 @@ function connectWS(){
 connectWS();
 $('bc').onclick=()=>post('connect',{username:$('u').value});
 $('bd').onclick=()=>post('disconnect');$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
+$('tt').onchange=e=>TTS.enable(e.target.checked);$('tn').onchange=e=>TTS.readNick(e.target.checked);$('tv').oninput=e=>TTS.setVolume(+e.target.value);
 $('sx').onkeydown=e=>{if(e.key==='Enter'&&e.target.value){post('sim',{nick:$('sn').value||'tester',text:e.target.value});e.target.value='';}};
 </script></body></html>

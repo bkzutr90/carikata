@@ -6,6 +6,7 @@ const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const { TikTokLiveConnection, WebcastEvent } = require('tiktok-live-connector');
 const { Game } = require('./lib/game');
+const { loadWords } = require('./lib/words');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -68,6 +69,26 @@ async function connect(username) {
   catch (e) { console.error('[connect]', e?.message || e); setStatus({ state: 'error', error: String(e?.message || e) }); wantUser = ''; }
 }
 
+
+// Text-to-speech: proxy ke Google Translate TTS (mp3), dengan cache kecil
+const ttsCache = new Map();
+app.get('/api/tts', async (req, res) => {
+  const text = String(req.query.text || '').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, ' ').replace(/https?:\/\/\S+/g, 'tautan').replace(/\s+/g, ' ').trim().slice(0, 180);
+  if (!text) return res.status(400).end();
+  try {
+    let buf = ttsCache.get(text);
+    if (!buf) {
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${process.env.TTS_LANG || 'id'}&q=${encodeURIComponent(text)}`;
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://translate.google.com/' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      buf = Buffer.from(await r.arrayBuffer());
+      ttsCache.set(text, buf);
+      if (ttsCache.size > 200) ttsCache.delete(ttsCache.keys().next().value);
+    }
+    res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=3600' }).send(buf);
+  } catch (e) { console.error('[tts]', e.message); res.status(502).end(); }
+});
+
 app.post('/api/connect', (req, res) => { connect(req.body.username); res.json({ ok: true }); });
 app.post('/api/disconnect', (_, res) => { disconnect(); res.json({ ok: true }); });
 app.post('/api/new-round', (_, res) => { game.newRound(); broadcast('state', game.state()); res.json({ ok: true }); });
@@ -79,7 +100,11 @@ app.post('/api/sim', (req, res) => {
 });
 app.get('/api/answers', (_, res) => res.json(game.words.map(w => w.word))); // bantu moderator/testing
 
-server.listen(PORT, () => {
-  console.log(`Dashboard: http://localhost:${PORT}\nOBS widget: http://localhost:${PORT}/?overlay=1`);
-  if (process.env.TIKTOK_USERNAME) connect(process.env.TIKTOK_USERNAME);
-});
+(async () => {
+  game.setWords(await loadWords());
+  game.round = 0; game.newRound();
+  server.listen(PORT, () => {
+    console.log(`Dashboard   : http://localhost:${PORT}\nGame (OBS)  : http://localhost:${PORT}/?overlay=1\nLeaderboard : http://localhost:${PORT}/leaderboard.html\nSuara (OBS) : http://localhost:${PORT}/tts.html`);
+    if (process.env.TIKTOK_USERNAME) connect(process.env.TIKTOK_USERNAME);
+  });
+})();

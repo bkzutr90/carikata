@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8"><title>TTS Chat</title>
+<style>body{margin:0;background:transparent;font:13px system-ui;color:#fff}#s{padding:6px 10px;background:#0009;display:inline-block;border-radius:8px}</style></head>
+<body><div id="s">🔊 TTS chat aktif</div>
+<script src="/tts.js"></script>
+<script>
+const q=new URLSearchParams(location.search);
+TTS.setVolume(q.has('vol')?+q.get('vol'):1);TTS.setRate(+q.get('rate')||1);TTS.readNick(q.get('nick')==='1');TTS.enable(true);
+if(q.get('hide')==='1')document.getElementById('s').style.display='none';
+(function ws(){const s=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  s.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='chat')TTS.say(m.data.user.nick,m.data.text);};
+  s.onclose=()=>setTimeout(ws,2000);})();
+</script></body></html>
