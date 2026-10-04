@@ -85,6 +85,7 @@ async function connect(username) {
   conn.on(WebcastEvent.STREAM_END, () => setStatus({ state: 'ended' }));
   conn.on('disconnected', () => { if (wantUser) { setStatus({ state: 'reconnecting' }); retry = setTimeout(() => connect(wantUser), 5000); } });
   conn.on('error', e => console.error('[tiktok]', e?.message || e));
+  conn.on(WebcastEvent.CHAT, d => console.log('[raw chat]', JSON.stringify(d, null, 1)));
 
   try { await conn.connect(); setStatus({ state: 'connected' }); }
   catch (e) { console.error('[connect]', e?.message || e); setStatus({ state: 'error', error: String(e?.message || e) }); wantUser = ''; }
