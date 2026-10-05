@@ -48,11 +48,14 @@ function resetStats() {
 // Kunci jawaban ronde berjalan: hanya dikirim ke widget /answers.html
 // Kalau ANSWERS_KEY diisi, widget harus membuka /answers.html?key=ISI_KEY
 const ANSWERS_KEY = process.env.ANSWERS_KEY || '';
+// arah kata dihitung dari dua sel pertama: key "dBaris,dKolom" -> panah (8 arah)
+const ARROW = { '0,1': '→', '1,0': '↓', '1,1': '↘', '1,-1': '↙', '0,-1': '←', '-1,0': '↑', '-1,-1': '↖', '-1,1': '↗' };
 function answersData() {
   const words = game.words.map(w => {
     const [r, c] = w.cells[0];
-    const horiz = w.cells.length < 2 || w.cells[1][0] === r;
-    return { word: w.word, r, c, pos: String.fromCharCode(65 + r) + (c + 1), dir: horiz ? 'H' : 'V', found: !!w.found, by: w.found?.nick || '' };
+    const [r2, c2] = w.cells[1] || [r, c + 1];
+    const dir = ARROW[`${Math.sign(r2 - r)},${Math.sign(c2 - c)}`] || '→';
+    return { word: w.word, r, c, pos: String.fromCharCode(65 + r) + (c + 1), dir, found: !!w.found, by: w.found?.nick || '' };
   }).sort((a, b) => a.r - b.r || a.c - b.c);
   return { round: game.round, words };
 }
