@@ -127,7 +127,7 @@ function announceFound(entry) {
   sendState();
   broadcast('found', { word: entry.word, user: entry.found, via: entry.found.via });
   if (game.done) {
-    broadcast('done', { seconds: ROUND_DELAY });
+    broadcast('done', { seconds: ROUND_DELAY, players: topPlayers(10) });
     setTimeout(() => { if (frozen) return; game.newRound(); sendState(); }, ROUND_DELAY * 1000);
   }
 }
