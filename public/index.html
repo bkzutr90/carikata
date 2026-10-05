@@ -91,7 +91,7 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <div id="done"><div>PAPAN SELESAI</div><small id="dn"></small></div>
   <div id="chat"></div>
   <div id="cd"><small>LIVE BERAKHIR DALAM</small><b id="cdn">10</b></div>
-  <div id="pod"><h2>🏆 PERINGKAT AKHIR</h2><div class="rows" id="podrows"></div><p class="thx">TERIMA KASIH SUDAH BERMAIN</p></div>
+  <div id="pod"><h2 id="pt">🏆 PERINGKAT AKHIR</h2><div class="rows" id="podrows"></div><p class="thx" id="pnext" style="color:#ff8ac0;font-size:13px"></p><p class="thx" id="pthx">TERIMA KASIH SUDAH BERMAIN</p></div>
 </main></div>
 <script src="/tts.js"></script>
 <script src="/sfx.js"></script>
@@ -156,6 +156,7 @@ function render(s){
   // saat server restart / ganti level / ronde baru. Tanpa ini huruf lama bisa tertinggal.
   const gkey=s.round+':'+s.grid.map(r=>r.join('')).join('');
   if(!$('c0_0')||$('board').dataset.k!==gkey){
+    cancelRoundPod(true); // papan baru: tutup podium sementara
     drawBoard(s);$('board').dataset.k=gkey;resetChips();
     waved=new Set(s.found.map(f=>f.word)); // refresh/ronde baru: tanpa wave
   }
@@ -192,7 +193,7 @@ function startDone(sec){
 // ---- end live: countdown + podium top 10 ----
 let cdT=null;
 function hidePodium(){$('pod').style.display='none';}
-function cancelEndUI(){clearInterval(cdT);cdT=null;$('cd').style.display='none';hidePodium();}
+function cancelEndUI(){cancelRoundPod(false);clearInterval(cdT);cdT=null;$('cd').style.display='none';hidePodium();}
 function startCountdown(sec){
   cancelEndUI();let n=sec;
   $('cdn').textContent=n;$('cd').style.display='flex';
@@ -215,8 +216,30 @@ function podBlock(r,p,delay){
   const pic=p?(p.avatar?`<img src="${esc(p.avatar)}">`:'<div class="ph"></div>'):'';
   return `<div class="pb r${r}${p?'':' e'}" style="--rc:${col};--av:${av}px;flex:${PFLEX[r]};height:${PH[r]}px;animation-delay:${delay}ms">${pic}${laurel(r,col,r===1?56:44)}<div class="pn">${p?esc(p.nick):'—'}</div><div class="pp">${p?esc(p.points)+' poin':''}</div></div>`;
 }
-function showPodium(players){
+// ---- podium sementara selama jeda 'papan selesai' ----
+let roundPod=false,rpT=null,rpI=null;
+function cancelRoundPod(hide){
+  clearTimeout(rpT);clearInterval(rpI);rpT=rpI=null;
+  if(roundPod&&hide)hidePodium();
+  roundPod=false;$('pnext').textContent='';
+}
+function startRoundPodium(players,sec){
+  cancelRoundPod(false);
+  if($('pod').style.display==='flex')return; // podium akhir live sedang tampil: jangan ditimpa
+  const delay=Math.min(2500,sec*250); // beri waktu efek wave kata terakhir terlihat dulu
+  rpT=setTimeout(()=>{
+    roundPod=true;let n=Math.max(1,Math.round(sec-delay/1000));
+    showPodium(players,'round');
+    const t=()=>{$('pnext').textContent=n>0?`RONDE BARU DALAM ${n}`:'';};t();
+    rpI=setInterval(()=>{n--;t();if(n<=0)clearInterval(rpI);},1000);
+  },delay);
+}
+function showPodium(players,mode){
   clearInterval(cdT);cdT=null;$('cd').style.display='none';
+  const rd=mode==='round';
+  $('pt').textContent=rd?'🏆 PERINGKAT SEMENTARA':'🏆 PERINGKAT AKHIR';
+  $('pthx').style.display=rd?'none':'';
+  if(!rd){roundPod=false;$('pnext').textContent='';}
   const row=order=>`<div class="pr">${order.map(r=>podBlock(r,players[r-1],(10-r)*90)).join('')}</div>`;
   $('podrows').innerHTML=row([4,2,1,3,5])+row([6,7,8,9,10]);
   $('pod').style.display='flex';
@@ -228,7 +251,7 @@ function connectWS(){
     if(type==='state')render(data);
     if(type==='level')$('lv').value=data;
     if(type==='found')data.via==='gift'?SFX.gift():SFX.reveal();
-    if(type==='done'){SFX.done();startDone(data&&data.seconds||10);}
+    if(type==='done'){SFX.done();const sec=data&&data.seconds||10;startDone(sec);startRoundPodium(data&&data.players||[],sec);}
     if(type==='chat'){if(!ov)TTS.say(data.user.nick,data.text);}
     if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
     if(type==='gift')addMsg(`🎁 <b>${esc(data.user.nick)}</b>kirim ${esc(data.gift||'gift')} x${data.count}`,'g');
