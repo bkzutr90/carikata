@@ -152,7 +152,13 @@ function ripple(f){
   });
 }
 function render(s){
-  if(!$('c0_0')||$('board').dataset.r!=s.round){drawBoard(s);$('board').dataset.r=s.round;resetChips();waved=new Set(s.found.map(f=>f.word));} // refresh/ronde baru: tanpa wave
+  // FIX: bandingkan isi grid (bukan cuma nomor ronde), supaya papan pasti digambar ulang
+  // saat server restart / ganti level / ronde baru. Tanpa ini huruf lama bisa tertinggal.
+  const gkey=s.round+':'+s.grid.map(r=>r.join('')).join('');
+  if(!$('c0_0')||$('board').dataset.k!==gkey){
+    drawBoard(s);$('board').dataset.k=gkey;resetChips();
+    waved=new Set(s.found.map(f=>f.word)); // refresh/ronde baru: tanpa wave
+  }
   s.grid.forEach((row,r)=>row.forEach((_,c)=>{const e=$(`c${r}_${c}`);e.className='c';e.style.background='';e.style.backgroundImage='';e.style.removeProperty('--wc');e.style.removeProperty('--i');}));
   const fresh=[];
   s.found.forEach(f=>{
