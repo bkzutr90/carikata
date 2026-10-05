@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chat Overlay — TikTok Live</title>
+<style>
+:root{--mut:#b6b6c4}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:transparent;color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif;overflow:hidden}
+#wrap{height:100%;display:flex;flex-direction:column;gap:10px;padding:10px}
+/* bar statistik */
+#bar{display:grid;grid-template-columns:repeat(5,1fr);background:#0b0b10d9;border:1px solid #ffffff22;border-radius:14px;padding:9px 0;box-shadow:0 6px 18px #0006}
+.st{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;padding:0 4px;border-right:1px solid #ffffff1a}
+.st:last-child{border-right:0}
+.st small{font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--mut);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.st b{font-size:21px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.st b.bump{animation:bump .35s}
+/* daftar chat */
+#chat{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18%);mask-image:linear-gradient(to bottom,transparent 0,#000 18%)}
+.m{display:flex;align-items:flex-start;gap:9px;align-self:flex-start;max-width:100%;background:#0b0b10c4;border-radius:18px;padding:6px 14px 6px 6px;animation:in .3s}
+.m img,.m .ph{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:none;background:#333}
+.m .ph{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#111}
+.m .t{min-width:0;font-size:15px;line-height:1.35;padding-top:5px;word-break:break-word}
+.m .t b{margin-right:7px;font-weight:800}
+@keyframes in{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+@keyframes bump{50%{transform:scale(1.18)}}
+</style></head>
+<body>
+<div id="wrap">
+  <div id="bar">
+    <div class="st"><small>👁 Real Viewer</small><b id="s_rv">0</b></div>
+    <div class="st"><small>👥 Total Viewer</small><b id="s_tv">0</b></div>
+    <div class="st"><small>🎁 Total Gift</small><b id="s_gf">0</b></div>
+    <div class="st"><small>➕ Follower Baru</small><b id="s_fl">0</b></div>
+    <div class="st"><small>❤ Jumlah Like</small><b id="s_lk">0</b></div>
+  </div>
+  <div id="chat"></div>
+</div>
+<script>
+const Q=new URLSearchParams(location.search),MAX=Math.max(1,+Q.get('max')||12),GIFT_COUNT=Q.get('gift')==='count';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PAL=['#ff6fb5','#ffb04a','#ffe066','#5df08b','#4fe0f2','#6fb8ff','#c79bff','#ff8a8a'];
+const colorOf=s=>{let h=0;for(const ch of String(s))h=(h*31+ch.charCodeAt(0))>>>0;return PAL[h%PAL.length];};
+const fmt=n=>{n=+n||0;const k=(v,u)=>(v).toFixed(1).replace(/\.0$/,'')+u;return n>=1e6?k(n/1e6,'M'):n>=1e4?k(n/1e3,'K'):n.toLocaleString('id-ID');};
+
+const prev={};
+function put(id,v){
+  const e=$(id),t=fmt(v);
+  if(e.textContent===t)return;
+  e.textContent=t;
+  if(prev[id]!==undefined){e.classList.remove('bump');void e.offsetWidth;e.classList.add('bump');}
+  prev[id]=v;
+}
+function setStats(s){
+  put('s_rv',s.viewers);put('s_tv',s.totalViewers);
+  put('s_gf',GIFT_COUNT?s.giftCount:s.diamonds); // default: total diamond; tambah ?gift=count untuk jumlah gift
+  put('s_fl',s.follows);put('s_lk',s.likes);
+}
+
+function addChat(u,text){
+  const c=$('chat'),col=colorOf(u.id||u.nick),ini=esc((u.nick||'?').trim().charAt(0).toUpperCase()||'?');
+  const pic=u.avatar
+    ?`<img src="${esc(u.avatar)}" onerror="this.outerHTML='<div class=&quot;ph&quot; style=&quot;background:${col}&quot;>${ini}</div>'">`
+    :`<div class="ph" style="background:${col}">${ini}</div>`;
+  c.insertAdjacentHTML('beforeend',`<div class="m">${pic}<div class="t"><b style="color:${col}">${esc(u.nick||'anon')}</b>${esc(text)}</div></div>`);
+  while(c.children.length>MAX)c.firstChild.remove();
+}
+
+function connectWS(){
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
+    if(type==='stats')setStats(data);
+    if(type==='chat'&&data.text)addChat(data.user,data.text);
+  };
+  ws.onclose=()=>setTimeout(connectWS,2000);
+}
+connectWS();
+</script></body></html>
