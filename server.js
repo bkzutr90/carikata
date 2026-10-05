@@ -5,13 +5,14 @@ const express = require('express');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const { TikTokLiveConnection, WebcastEvent } = require('tiktok-live-connector');
-const { Game } = require('./lib/game');
+const { Game, MODES } = require('./lib/game');
 const { loadWords, LEVELS, DEFAULT_LEVEL } = require('./lib/words');
 
 const PORT = process.env.PORT || 3000;
 const DEBUG = !!process.env.DEBUG_TIKTOK;
 const ROUND_DELAY = Math.max(1, +process.env.ROUND_DELAY_S || 10); // detik jeda sebelum ronde baru
 const END_SECONDS = Math.max(1, +process.env.END_SECONDS || 10);   // detik countdown End Live
+const HINT_MS = Math.max(5, +process.env.HINT_SECONDS || 15) * 1000; // hint otomatis kalau tidak ada yang menjawab
 const app = express();
 app.use(cors(), express.json(), express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
@@ -19,9 +20,20 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 const game = new Game();
 let level = DEFAULT_LEVEL, conn = null, status = { state: 'idle', username: '', viewers: 0, likes: 0 }, wantUser = '', retry;
 
-// End Live: frozen = skor dibekukan sejak countdown mulai; podium = data podium yang sedang tampil
+// End Live / Skor Akhir: frozen = skor dibekukan; podium = data podium yang sedang tampil
 let frozen = false, endTimer = null, podium = null;
+let scoreShown = false; // sudah menekan "Skor Akhir"? (syarat untuk ganti mode)
 const avatars = new Map(); // id/nick -> url foto (cadangan kalau game.scores tidak menyimpan avatar)
+
+// Hint otomatis: tiap HINT_MS tanpa ada kata ketemu -> kirim hint. Timer di-reset oleh sendState().
+let hintTimer = null;
+function armHint() {
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => {
+    if (!frozen && !game.done) { const h = game.hint(); if (h) broadcast('hint', h); }
+    armHint(); // kalau masih belum ada yang jawab, hint berikutnya HINT_MS lagi
+  }, HINT_MS);
+}
 
 // Statistik live untuk overlay chat (/chat.html)
 // viewers = penonton saat ini; totalViewers = unik yang terlihat sejak server konek (atau puncak viewers, mana yang lebih besar)
@@ -59,17 +71,18 @@ function answersData() {
   }).sort((a, b) => a.r - b.r || a.c - b.c);
   return { round: game.round, words };
 }
-// kirim state papan ke semua widget + jawaban ke widget yang berhak
+// kirim state papan ke semua widget + jawaban ke widget yang berhak; juga reset timer hint
 function sendState() {
   broadcast('state', game.state());
   const a = answersData();
   wss.clients.forEach(ws => ws.canSeeAnswers && send(ws, 'answers', a));
+  armHint();
 }
 
 wss.on('connection', (ws, req) => {
   let key = ''; try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch {}
   ws.canSeeAnswers = !ANSWERS_KEY || key === ANSWERS_KEY;
-  send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status); send(ws, 'stats', stats);
+  send(ws, 'level', level); send(ws, 'mode', game.mode); send(ws, 'state', game.state()); send(ws, 'status', status); send(ws, 'stats', stats);
   if (ws.canSeeAnswers) send(ws, 'answers', answersData());
   if (podium) send(ws, 'podium', podium); // widget OBS yang di-refresh tetap menampilkan podium
 });
@@ -118,8 +131,8 @@ function startEnd(sec) {
   }, sec * 1000);
 }
 function cancelEnd() {
-  clearTimeout(endTimer); endTimer = null; frozen = false; podium = null;
-  broadcast('endlive_cancel', {});
+  clearTimeout(endTimer); endTimer = null; frozen = false; podium = null; scoreShown = false;
+  broadcast('endlive_cancel', {}); armHint();
 }
 
 // Setelah ada kata ketemu (dari chat atau gift): kirim ke semua widget, mulai ronde baru kalau papan selesai
@@ -135,7 +148,7 @@ function announceFound(entry) {
 function handleChat(user, text) {
   remember(user);
   broadcast('chat', { user, text });
-  if (frozen) return; // End Live: skor dibekukan
+  if (frozen) return; // End Live / Skor Akhir: skor dibekukan
   const res = game.guess(user, text);
   if (!res) return;
   if (res.type === 'cell') return broadcast('cell', { r: res.r, c: res.c });
@@ -147,7 +160,7 @@ const GIFT_MAX_WORDS = Math.max(1, +process.env.GIFT_MAX_WORDS || 1);
 function handleGift(user, giftName, diamonds, count) {
   remember(user);
   stats.giftCount += count; stats.diamonds += diamonds * count; pushStats();
-  if (frozen) return broadcast('gift', { user, gift: giftName, count }); // End Live: tidak menambah poin
+  if (frozen) return broadcast('gift', { user, gift: giftName, count }); // dibekukan: tidak menambah poin
   game.addScore(user, diamonds * count);
   broadcast('gift', { user, gift: giftName, count });
   let opened = 0;
@@ -260,6 +273,29 @@ app.post('/api/end-live', (req, res) => {
 });
 app.post('/api/end-live/cancel', (_, res) => { cancelEnd(); res.json({ ok: true }); });
 
+// Skor Akhir: tampilkan podium langsung (tanpa countdown), skor dibekukan. BEDA dari End Live.
+app.post('/api/final-score', (_, res) => {
+  clearTimeout(endTimer); endTimer = null;
+  frozen = true; scoreShown = true;
+  podium = { players: topPlayers(10), kind: 'score' };
+  broadcast('podium', podium); res.json({ ok: true });
+});
+
+// Ganti mode papan: kalau sudah ada skor, wajib tekan "Skor Akhir" dulu. Ganti mode = skor di-reset.
+app.post('/api/mode', (req, res) => {
+  const m = req.body.mode;
+  if (!MODES.includes(m)) return res.status(400).json({ ok: false, error: 'Mode tidak dikenal' });
+  if (m === game.mode) return res.json({ ok: true, mode: m });
+  const hasScores = [...game.scores.values()].some(v => (v.points || 0) > 0);
+  if (hasScores && !scoreShown)
+    return res.status(409).json({ ok: false, error: 'Tekan "Skor Akhir" dulu sebelum ganti mode.' });
+  game.setMode(m); game.scores.clear();
+  clearTimeout(endTimer); endTimer = null; frozen = false; podium = null; scoreShown = false;
+  broadcast('endlive_cancel', {}); broadcast('mode', m);
+  game.newRound(); sendState(); res.json({ ok: true, mode: m });
+});
+app.get('/api/mode', (_, res) => res.json({ mode: game.mode }));
+
 // Simulasi chat untuk testing tanpa live
 app.post('/api/sim', (req, res) => {
   const { nick = 'tester', text = '' } = req.body;
@@ -273,7 +309,7 @@ app.get('/api/answers', (_, res) => res.json(game.words.map(w => w.word))); // b
 
 (async () => {
   game.setWords(await loadWords(level));
-  game.round = 0; game.newRound();
+  game.round = 0; game.newRound(); armHint();
   server.listen(PORT, () => {
     console.log(`Dashboard   : http://localhost:${PORT}\nGame (OBS)  : http://localhost:${PORT}/?overlay=1\nLeaderboard : http://localhost:${PORT}/leaderboard.html\nChat (OBS)  : http://localhost:${PORT}/chat.html\nSuara (OBS) : http://localhost:${PORT}/tts.html`);
     if (process.env.TIKTOK_USERNAME) connect(process.env.TIKTOK_USERNAME);
