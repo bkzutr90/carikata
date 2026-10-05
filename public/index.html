@@ -24,10 +24,25 @@ h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shad
 .lbl{font-size:11px;color:var(--mut);display:flex;align-items:center;justify-content:center}
 .c{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(13px,3.6vw,20px);background:#14141c;border-radius:4px;color:#f2f2f2;background-size:cover;background-position:center;transition:background .3s}
 .c.f{color:#111;animation:pop .4s}.c.ping{animation:ping 1.2s;outline:2px solid #fff}
-#done{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:32px;font-weight:900;text-shadow:0 3px 12px #000;background:#0008;border-radius:8px}
-#lb{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;font-size:12px}
-.row{display:flex;align-items:center;gap:6px;min-width:0}.row img,.row i{width:20px;height:20px;border-radius:50%;background:#333;flex:none;object-fit:cover}
-.row b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.row em{color:#ffd93b;font-style:normal;font-weight:800}
+/* papan selesai + countdown ronde baru */
+#done{position:absolute;inset:0;display:none;flex-direction:column;gap:6px;text-align:center;align-items:center;justify-content:center;font-size:32px;font-weight:900;text-shadow:0 3px 12px #000;background:#0008;border-radius:8px;z-index:4}
+#done small{font-size:17px;font-weight:700;color:#ffd93b}
+/* countdown end live */
+#cd{position:absolute;inset:0;display:none;flex-direction:column;gap:4px;text-align:center;align-items:center;justify-content:center;background:#000c;border-radius:8px;z-index:6}
+#cd small{font-size:16px;font-weight:800;letter-spacing:1.5px;color:#ff8ac0}
+#cd b{font-size:120px;line-height:1;color:#fff;text-shadow:0 4px 24px #fe2c55}
+/* podium top 10 */
+#pod{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:12px 10px;z-index:10;border-radius:12px;background:radial-gradient(ellipse at 50% 28%,#2b2b34 0%,#121217 55%,#08080b 100%)}
+#pod h2{margin:0;font-size:22px;letter-spacing:3px;color:#ffd93b;text-shadow:0 2px 10px #000;text-align:center}
+#pod .thx{margin:0;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mut)}
+.rows{width:100%;display:flex;flex-direction:column;gap:8px}
+.pr{display:flex;align-items:flex-end;gap:6px}
+.pb{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 4px 6px;border-radius:6px;background:linear-gradient(#23232c,#0d0d12);border:1px solid #2c2c37;border-top:4px solid var(--rc);box-shadow:0 8px 18px #000a,inset 0 1px 0 #ffffff14;animation:pop .5s backwards}
+.pb.e{opacity:.4}
+.pb img,.pb .ph{width:var(--av);height:var(--av);border-radius:50%;object-fit:cover;border:2px solid var(--rc);background:#333;flex:none}
+.pb .pn{max-width:100%;font-size:11px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pb .pp{font-size:11px;font-weight:800;color:var(--rc)}
+.pb.r1 .pn{font-size:13px}.pb.r1 .pp{font-size:13px}
 #chat{display:flex;flex-direction:column;gap:4px;min-height:120px;justify-content:flex-end}
 .m{align-self:flex-start;background:#0009;border-radius:14px;padding:5px 10px;font-size:13px;max-width:90%;animation:pop .25s}.m b{color:#aaa;margin-right:5px}.m.g{background:#7a2d00cc}
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}@keyframes ping{50%{transform:scale(1.25);background:#fff;color:#000}}
@@ -41,6 +56,10 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <button id="bc">Hubungkan</button><button id="bd" class="g">Putus</button>
   <select id="lv" style="padding:9px 10px;border-radius:8px;border:0;background:#2a2a36;color:#fff;font:inherit"><option value="mudah">Kata: Mudah</option><option value="sedang">Kata: Sedang</option><option value="sulit">Kata: Sulit</option></select>
   <button id="bn" class="g">Ronde baru</button><button id="br" class="g">Reset skor</button>
+  <hr style="border-color:#2a2a36;width:100%">
+  <input id="es" type="number" min="1" max="60" value="10" title="Detik countdown" placeholder="Detik countdown">
+  <button id="be">🔴 End Live (countdown + podium)</button>
+  <button id="bx" class="g">Batal End Live</button>
   <div id="st">Status: idle</div>
   <hr style="border-color:#2a2a36;width:100%">
   <input id="sn" placeholder="Nama tester"><input id="sx" placeholder="Ketik kata / C7 lalu Enter"><button id="sg" class="g">🎁 Simulasi gift</button>
@@ -55,8 +74,11 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <div id="chips"><div id="track"></div></div>
   <h1>CARI KATA TERSEMBUNYI <span id="cnt">0/20</span></h1>
   <p id="hint">KETIK KATA YANG KAMU LIHAT</p>
-  <div id="board"></div><div id="done">PAPAN SELESAI</div>
-  <div id="lb"></div><div id="chat"></div>
+  <div id="board"></div>
+  <div id="done"><div>PAPAN SELESAI</div><small id="dn"></small></div>
+  <div id="chat"></div>
+  <div id="cd"><small>LIVE BERAKHIR DALAM</small><b id="cdn">10</b></div>
+  <div id="pod"><h2>🏆 PERINGKAT AKHIR</h2><div class="rows" id="podrows"></div><p class="thx">TERIMA KASIH SUDAH BERMAIN</p></div>
 </main></div>
 <script src="/tts.js"></script>
 <script src="/sfx.js"></script>
@@ -100,6 +122,7 @@ function drawBoard(s){
   s.grid.forEach((row,r)=>{b.insertAdjacentHTML('beforeend',`<div class="lbl">${String.fromCharCode(65+r)}</div>`);
     row.forEach((ch,c)=>b.insertAdjacentHTML('beforeend',`<div class="c" id="c${r}_${c}">${ch}</div>`));});
 }
+let dnT=null;
 function render(s){
   if(!$('c0_0')||$('board').dataset.r!=s.round){drawBoard(s);$('board').dataset.r=s.round;resetChips();}
   s.grid.forEach((row,r)=>row.forEach((_,c)=>{const e=$(`c${r}_${c}`);e.className='c';e.style.background='';e.style.backgroundImage='';}));
@@ -107,7 +130,7 @@ function render(s){
   syncChips(s);
   $('cnt').textContent=`${s.found.length}/${s.total}`;
   $('done').style.display=s.done?'flex':'none';
-  $('lb').innerHTML=s.top.map(t=>`<div class="row">${t.avatar?`<img src="${esc(t.avatar)}">`:'<i></i>'}<b>${esc(t.nick)}</b><em>${t.points}</em></div>`).join('');
+  if(!s.done){clearInterval(dnT);$('dn').textContent='';}
 }
 function syncChips(s){
   const added=s.found.filter(f=>placeChip({word:f.word,user:f.user,at:f.user.at})).map(f=>f.word);
@@ -115,17 +138,60 @@ function syncChips(s){
 }
 function addMsg(html,cls=''){const c=$('chat');c.insertAdjacentHTML('beforeend',`<div class="m ${cls}">${html}</div>`);while(c.children.length>6)c.firstChild.remove();}
 
+// ---- countdown papan selesai -> ronde baru ----
+function startDone(sec){
+  clearInterval(dnT);let n=sec;
+  const t=()=>{$('dn').textContent=n>0?`Ronde baru dalam ${n}`:'';};t();
+  dnT=setInterval(()=>{n--;t();if(n<=0)clearInterval(dnT);},1000);
+}
+
+// ---- end live: countdown + podium top 10 ----
+let cdT=null;
+function hidePodium(){$('pod').style.display='none';}
+function cancelEndUI(){clearInterval(cdT);cdT=null;$('cd').style.display='none';hidePodium();}
+function startCountdown(sec){
+  cancelEndUI();let n=sec;
+  $('cdn').textContent=n;$('cd').style.display='flex';
+  cdT=setInterval(()=>{n--;$('cdn').textContent=Math.max(n,0);if(n<=0){clearInterval(cdT);cdT=null;}},1000);
+}
+const PCOL={1:'#f5c542',2:'#cfd3da',3:'#d58a52'},PFLEX={1:1.2,2:1.1,3:1.1,4:1,5:1,6:.85,7:1.1,8:1.1,9:1.1,10:.85};
+const PH={1:250,2:215,3:215,4:175,5:175,6:130,7:130,8:130,9:130,10:130};
+const PAV=r=>r===1?56:r<=3?48:r<=5?40:34;
+// karangan laurel + nomor, mirip desain podium
+function laurel(n,col,w){
+  let leaves='';
+  for(let i=0;i<7;i++){
+    const a=105+i*21,th=a*Math.PI/180,x=30+19*Math.cos(th),y=26+19*Math.sin(th);
+    leaves+=`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="2.4" ry="5" transform="rotate(${(a-18).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
+  }
+  return `<svg width="${w}" height="${(w*52/60).toFixed(0)}" viewBox="0 0 60 52"><g fill="${col}">${leaves}</g><g fill="${col}" transform="translate(60 0) scale(-1 1)">${leaves}</g><text x="30" y="27" text-anchor="middle" dominant-baseline="central" font-size="${n>=10?15:20}" font-weight="800" fill="${col}">${n}</text></svg>`;
+}
+function podBlock(r,p,delay){
+  const col=PCOL[r]||'#a9afbb',av=PAV(r);
+  const pic=p?(p.avatar?`<img src="${esc(p.avatar)}">`:'<div class="ph"></div>'):'';
+  return `<div class="pb r${r}${p?'':' e'}" style="--rc:${col};--av:${av}px;flex:${PFLEX[r]};height:${PH[r]}px;animation-delay:${delay}ms">${pic}${laurel(r,col,r===1?56:44)}<div class="pn">${p?esc(p.nick):'—'}</div><div class="pp">${p?esc(p.points)+' poin':''}</div></div>`;
+}
+function showPodium(players){
+  clearInterval(cdT);cdT=null;$('cd').style.display='none';
+  const row=order=>`<div class="pr">${order.map(r=>podBlock(r,players[r-1],(10-r)*90)).join('')}</div>`;
+  $('podrows').innerHTML=row([4,2,1,3,5])+row([6,7,8,9,10]);
+  $('pod').style.display='flex';
+}
+
 function connectWS(){
   const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
     if(type==='state')render(data);
     if(type==='level')$('lv').value=data;
     if(type==='found')data.via==='gift'?SFX.gift():SFX.reveal();
-    if(type==='done')SFX.done();
+    if(type==='done'){SFX.done();startDone(data&&data.seconds||10);}
     if(type==='chat'){if(!ov)TTS.say(data.user.nick,data.text);}
     if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
     if(type==='gift')addMsg(`🎁 <b>${esc(data.user.nick)}</b>kirim ${esc(data.gift||'gift')} x${data.count}`,'g');
     if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}SFX.tick();}
+    if(type==='endlive')startCountdown(data.seconds||10);
+    if(type==='endlive_cancel')cancelEndUI();
+    if(type==='podium')showPodium(data.players||[]);
     if(type==='status'){$('st').innerHTML=`Status: <b>${data.state}</b>${data.username?' @'+esc(data.username):''}<br>👁 ${data.viewers||0} · ❤ ${data.likes||0}${data.error?'<br>⚠ '+esc(data.error):''}`;}
   };
   ws.onclose=()=>setTimeout(connectWS,2000);
@@ -133,6 +199,7 @@ function connectWS(){
 connectWS();
 $('bc').onclick=()=>post('connect',{username:$('u').value});
 $('bd').onclick=()=>post('disconnect');$('lv').onchange=e=>post('difficulty',{level:e.target.value});$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
+$('be').onclick=()=>post('end-live',{seconds:+$('es').value||10});$('bx').onclick=()=>post('end-live/cancel');
 $('fx').onchange=e=>SFX.enable(e.target.checked);$('fv').oninput=e=>SFX.setVolume(+e.target.value);
 $('sg').onclick=()=>post('sim-gift',{nick:$('sn').value||'tester',gift:'Rose',diamonds:1,count:1});
 addEventListener('pointerdown',()=>SFX.unlock(),{once:true});addEventListener('keydown',()=>SFX.unlock(),{once:true});
