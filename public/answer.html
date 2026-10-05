@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kunci Jawaban — TikTok Live</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0b10;color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif}
+#w{padding:12px;max-width:680px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+h1{margin:0;font-size:16px;letter-spacing:1px;color:#ffd93b}
+#meta{font-size:13px;color:#8b8b9a;white-space:nowrap}
+#g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.a{display:flex;align-items:center;gap:8px;background:#17171f;border-radius:10px;padding:7px 10px;min-width:0}
+.a .x{flex:1;min-width:0}
+.a .w{font-weight:800;font-size:15px;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a small{display:block;font-size:10px;color:#8b8b9a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a .p{font-size:11px;font-weight:800;color:#ff8ac0;white-space:nowrap}
+.a.f{opacity:.35}.a.f .w{text-decoration:line-through}
+#empty{color:#8b8b9a;font-size:13px}
+</style></head>
+<body><div id="w">
+  <header><h1>🔑 KUNCI JAWABAN</h1><span id="meta"></span></header>
+  <div id="g"></div>
+  <div id="empty">Menunggu data…</div>
+</div>
+<script>
+const Q=new URLSearchParams(location.search),KEY=Q.get('key')||'',HIDE=Q.get('hidefound')==='1';
+if(Q.get('bg')==='0')document.body.style.background='transparent';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let got=false;
+function render(d){
+  got=true;$('empty').style.display='none';
+  const left=d.words.filter(w=>!w.found).length;
+  $('meta').textContent=`Ronde ${d.round} · sisa ${left}/${d.words.length}`;
+  $('g').innerHTML=d.words.filter(w=>!(HIDE&&w.found)).map(w=>
+    `<div class="a${w.found?' f':''}"><div class="x"><div class="w">${esc(w.word)}</div>${w.found&&w.by?`<small>${esc(w.by)}</small>`:''}</div><span class="p">${w.pos} ${w.dir==='H'?'→':'↓'}</span></div>`
+  ).join('');
+}
+function connectWS(){
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws'+(KEY?'?key='+encodeURIComponent(KEY):''));
+  ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);if(type==='answers')render(data);};
+  ws.onclose=()=>setTimeout(connectWS,2000);
+}
+connectWS();
+setTimeout(()=>{if(!got)$('empty').textContent='Belum ada data. Kalau server memakai ANSWERS_KEY, buka halaman ini dengan ?key=ISI_KEY.';},3000);
+</script></body></html>
