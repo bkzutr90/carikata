@@ -68,6 +68,12 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <input id="u" placeholder="@username TikTok (harus sedang LIVE)">
   <button id="bc">Hubungkan</button><button id="bd" class="g">Putus</button>
   <select id="lv" style="padding:9px 10px;border-radius:8px;border:0;background:#2a2a36;color:#fff;font:inherit"><option value="mudah">Kata: Mudah</option><option value="sedang">Kata: Sedang</option><option value="sulit">Kata: Sulit</option></select>
+  <select id="md" style="padding:9px 10px;border-radius:8px;border:0;background:#2a2a36;color:#fff;font:inherit">
+    <option value="mudah">Mode: Mudah (tanpa serong)</option>
+    <option value="sedang">Mode: Sedang (ada serong)</option>
+    <option value="sulit">Mode: Sulit (serong + terbalik)</option>
+  </select>
+  <button id="bs">🏁 Skor Akhir</button>
   <button id="bn" class="g">Ronde baru</button><button id="br" class="g">Reset skor</button>
   <hr style="border-color:#2a2a36;width:100%">
   <input id="es" type="number" min="1" max="60" value="10" title="Detik countdown" placeholder="Detik countdown">
@@ -152,13 +158,14 @@ function ripple(f){
   });
 }
 function render(s){
-  // FIX: bandingkan isi grid (bukan cuma nomor ronde), supaya papan pasti digambar ulang
-  // saat server restart / ganti level / ronde baru. Tanpa ini huruf lama bisa tertinggal.
+  // bandingkan isi grid (bukan cuma nomor ronde), supaya papan pasti digambar ulang
+  // saat server restart / ganti level / ganti mode / ronde baru. Tanpa ini huruf lama bisa tertinggal.
   const gkey=s.round+':'+s.grid.map(r=>r.join('')).join('');
   if(!$('c0_0')||$('board').dataset.k!==gkey){
     cancelRoundPod(true); // papan baru: tutup podium sementara
     drawBoard(s);$('board').dataset.k=gkey;resetChips();
     waved=new Set(s.found.map(f=>f.word)); // refresh/ronde baru: tanpa wave
+    clearTimeout(hintT);$('hint').textContent=HINT_DEF; // hint lama tidak berlaku di papan baru
   }
   s.grid.forEach((row,r)=>row.forEach((_,c)=>{const e=$(`c${r}_${c}`);e.className='c';e.style.background='';e.style.backgroundImage='';e.style.removeProperty('--wc');e.style.removeProperty('--i');}));
   const fresh=[];
@@ -182,6 +189,17 @@ function syncChips(s){
   if(added.length)drawRing(added.length===1?added[0]:null);
 }
 function addMsg(html,cls=''){const c=$('chat');c.insertAdjacentHTML('beforeend',`<div class="m ${cls}">${html}</div>`);while(c.children.length>6)c.firstChild.remove();}
+
+// ---- hint otomatis (dikirim server kalau 15 detik tidak ada yang menjawab) ----
+let hintT=null;
+const HINT_DEF='KETIK KATA YANG KAMU LIHAT';
+function showHint(h){
+  $('hint').textContent=`💡 HINT: ADA KATA ${h.length} HURUF, HURUF PERTAMA DI ${h.pos}`;
+  const e=$(`c${h.r}_${h.c}`);
+  if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');setTimeout(()=>e.classList.remove('ping'),3000);}
+  SFX.tick();
+  clearTimeout(hintT);hintT=setTimeout(()=>{$('hint').textContent=HINT_DEF;},10000);
+}
 
 // ---- countdown papan selesai -> ronde baru ----
 function startDone(sec){
@@ -234,12 +252,13 @@ function startRoundPodium(players,sec){
     rpI=setInterval(()=>{n--;t();if(n<=0)clearInterval(rpI);},1000);
   },delay);
 }
+// mode: 'round' = peringkat sementara, 'score' = tombol Skor Akhir, lainnya = podium End Live
 function showPodium(players,mode){
   clearInterval(cdT);cdT=null;$('cd').style.display='none';
-  const rd=mode==='round';
-  $('pt').textContent=rd?'🏆 PERINGKAT SEMENTARA':'🏆 PERINGKAT AKHIR';
-  $('pthx').style.display=rd?'none':'';
-  if(!rd){roundPod=false;$('pnext').textContent='';}
+  const rd=mode==='round',sc=mode==='score';
+  $('pt').textContent=rd?'🏆 PERINGKAT SEMENTARA':sc?'🏆 SKOR AKHIR':'🏆 PERINGKAT AKHIR';
+  $('pthx').style.display=(rd||sc)?'none':'';
+  if(!rd){cancelRoundPod(false);roundPod=false;$('pnext').textContent='';}
   const row=order=>`<div class="pr">${order.map(r=>podBlock(r,players[r-1],(10-r)*90)).join('')}</div>`;
   $('podrows').innerHTML=row([4,2,1,3,5])+row([6,7,8,9,10]);
   $('pod').style.display='flex';
@@ -250,7 +269,9 @@ function connectWS(){
   ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
     if(type==='state')render(data);
     if(type==='level')$('lv').value=data;
-    if(type==='found')data.via==='gift'?SFX.gift():SFX.reveal();
+    if(type==='mode'){$('md').value=data;$('md').dataset.cur=data;}
+    if(type==='found'){data.via==='gift'?SFX.gift():SFX.reveal();clearTimeout(hintT);$('hint').textContent=HINT_DEF;}
+    if(type==='hint')showHint(data);
     if(type==='done'){SFX.done();const sec=data&&data.seconds||10;startDone(sec);startRoundPodium(data&&data.players||[],sec);}
     if(type==='chat'){if(!ov)TTS.say(data.user.nick,data.text);}
     if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
@@ -258,7 +279,7 @@ function connectWS(){
     if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}SFX.tick();}
     if(type==='endlive')startCountdown(data.seconds||10);
     if(type==='endlive_cancel')cancelEndUI();
-    if(type==='podium')showPodium(data.players||[]);
+    if(type==='podium')showPodium(data.players||[],data.kind);
     if(type==='status'){$('st').innerHTML=`Status: <b>${data.state}</b>${data.username?' @'+esc(data.username):''}<br>👁 ${data.viewers||0} · ❤ ${data.likes||0}${data.error?'<br>⚠ '+esc(data.error):''}`;}
   };
   ws.onclose=()=>setTimeout(connectWS,2000);
@@ -267,6 +288,13 @@ connectWS();
 $('bc').onclick=()=>post('connect',{username:$('u').value});
 $('bd').onclick=()=>post('disconnect');$('lv').onchange=e=>post('difficulty',{level:e.target.value});$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
 $('be').onclick=()=>post('end-live',{seconds:+$('es').value||10});$('bx').onclick=()=>post('end-live/cancel');
+// Skor Akhir (beda dari End Live): podium langsung tanpa countdown, skor dibekukan
+$('bs').onclick=()=>post('final-score');
+// Ganti mode: ditolak server kalau skor belum ditampilkan lewat Skor Akhir
+$('md').onchange=async e=>{
+  const r=await post('mode',{mode:e.target.value}),j=await r.json();
+  if(!j.ok){alert(j.error||'Gagal ganti mode');e.target.value=e.target.dataset.cur||'mudah';}
+};
 $('fx').onchange=e=>SFX.enable(e.target.checked);$('fv').oninput=e=>SFX.setVolume(+e.target.value);
 $('sg').onclick=()=>post('sim-gift',{nick:$('sn').value||'tester',gift:'Rose',diamonds:1,count:1});
 addEventListener('pointerdown',()=>SFX.unlock(),{once:true});addEventListener('keydown',()=>SFX.unlock(),{once:true});
