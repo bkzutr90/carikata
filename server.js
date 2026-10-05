@@ -10,6 +10,8 @@ const { loadWords, LEVELS, DEFAULT_LEVEL } = require('./lib/words');
 
 const PORT = process.env.PORT || 3000;
 const DEBUG = !!process.env.DEBUG_TIKTOK;
+const ROUND_DELAY = Math.max(1, +process.env.ROUND_DELAY_S || 10); // detik jeda sebelum ronde baru
+const END_SECONDS = Math.max(1, +process.env.END_SECONDS || 10);   // detik countdown End Live
 const app = express();
 app.use(cors(), express.json(), express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
@@ -17,10 +19,17 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 const game = new Game();
 let level = DEFAULT_LEVEL, conn = null, status = { state: 'idle', username: '', viewers: 0, likes: 0 }, wantUser = '', retry;
 
+// End Live: frozen = skor dibekukan sejak countdown mulai; podium = data podium yang sedang tampil
+let frozen = false, endTimer = null, podium = null;
+const avatars = new Map(); // id/nick -> url foto (cadangan kalau game.scores tidak menyimpan avatar)
+
 const send = (ws, type, data) => ws.readyState === 1 && ws.send(JSON.stringify({ type, data }));
 const broadcast = (type, data) => wss.clients.forEach(ws => send(ws, type, data));
 const setStatus = p => { Object.assign(status, p); broadcast('status', status); };
-wss.on('connection', ws => { send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status); });
+wss.on('connection', ws => {
+  send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status);
+  if (podium) send(ws, 'podium', podium); // widget OBS yang di-refresh tetap menampilkan podium
+});
 
 // Normalisasi data user (kompatibel dgn payload v2 dan bentuk lama)
 const getUser = d => {
@@ -37,18 +46,53 @@ const getUser = d => {
   };
 };
 
+const remember = u => { if (u?.avatar) { avatars.set(String(u.id), u.avatar); avatars.set(String(u.nick), u.avatar); } };
+
+// Top pemain dari game.scores (toleran terhadap bentuk datanya: angka, atau objek {nick, avatar, points})
+function topPlayers(n = 10) {
+  const sc = game.scores;
+  const list = sc instanceof Map ? [...sc.entries()] : Object.entries(sc || {});
+  return list.map(([k, v]) => {
+    const o = v && typeof v === 'object' ? v : { points: +v || 0 };
+    const u = o.user || o;
+    const nick = u.nick || o.nick || String(k);
+    return {
+      id: String(k),
+      nick,
+      avatar: u.avatar || o.avatar || avatars.get(String(k)) || avatars.get(nick) || '',
+      points: o.points ?? o.score ?? o.pts ?? 0,
+    };
+  }).sort((a, b) => b.points - a.points).slice(0, n);
+}
+
+function startEnd(sec) {
+  clearTimeout(endTimer); podium = null; frozen = true;
+  broadcast('endlive', { seconds: sec });
+  endTimer = setTimeout(() => {
+    endTimer = null;
+    podium = { players: topPlayers(10) };
+    broadcast('podium', podium);
+  }, sec * 1000);
+}
+function cancelEnd() {
+  clearTimeout(endTimer); endTimer = null; frozen = false; podium = null;
+  broadcast('endlive_cancel', {});
+}
+
 // Setelah ada kata ketemu (dari chat atau gift): kirim ke semua widget, mulai ronde baru kalau papan selesai
 function announceFound(entry) {
   broadcast('state', game.state());
   broadcast('found', { word: entry.word, user: entry.found, via: entry.found.via });
   if (game.done) {
-    broadcast('done', {});
-    setTimeout(() => { game.newRound(); broadcast('state', game.state()); }, 10000);
+    broadcast('done', { seconds: ROUND_DELAY });
+    setTimeout(() => { if (frozen) return; game.newRound(); broadcast('state', game.state()); }, ROUND_DELAY * 1000);
   }
 }
 
 function handleChat(user, text) {
+  remember(user);
   broadcast('chat', { user, text });
+  if (frozen) return; // End Live: skor dibekukan
   const res = game.guess(user, text);
   if (!res) return;
   if (res.type === 'cell') return broadcast('cell', { r: res.r, c: res.c });
@@ -58,6 +102,8 @@ function handleChat(user, text) {
 // Gift: poin = diamond, dan pemberi gift otomatis membuka kata di papan (tanpa mengetik)
 const GIFT_MAX_WORDS = Math.max(1, +process.env.GIFT_MAX_WORDS || 1);
 function handleGift(user, giftName, diamonds, count) {
+  remember(user);
+  if (frozen) return broadcast('gift', { user, gift: giftName, count }); // End Live: tidak menambah poin
   game.addScore(user, diamonds * count);
   broadcast('gift', { user, gift: giftName, count });
   let opened = 0;
@@ -143,8 +189,16 @@ app.post('/api/difficulty', async (req, res) => {
 app.get('/api/difficulty', (_, res) => res.json({ level }));
 app.post('/api/connect', (req, res) => { connect(req.body.username); res.json({ ok: true }); });
 app.post('/api/disconnect', (_, res) => { disconnect(); res.json({ ok: true }); });
-app.post('/api/new-round', (_, res) => { game.newRound(); broadcast('state', game.state()); res.json({ ok: true }); });
+app.post('/api/new-round', (_, res) => { if (frozen) cancelEnd(); game.newRound(); broadcast('state', game.state()); res.json({ ok: true }); });
 app.post('/api/reset-scores', (_, res) => { game.scores.clear(); broadcast('state', game.state()); res.json({ ok: true }); });
+
+// End Live: countdown N detik, lalu tampilkan podium top 10
+app.post('/api/end-live', (req, res) => {
+  const sec = Math.min(60, Math.max(1, Math.round(+req.body?.seconds || END_SECONDS)));
+  startEnd(sec); res.json({ ok: true, seconds: sec });
+});
+app.post('/api/end-live/cancel', (_, res) => { cancelEnd(); res.json({ ok: true }); });
+
 // Simulasi chat untuk testing tanpa live
 app.post('/api/sim', (req, res) => {
   const { nick = 'tester', text = '' } = req.body;
