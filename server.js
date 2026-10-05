@@ -45,8 +45,29 @@ function resetStats() {
   seen.clear(); peakViewers = 0; pushStats(true);
 }
 
-wss.on('connection', ws => {
+// Kunci jawaban ronde berjalan: hanya dikirim ke widget /answers.html
+// Kalau ANSWERS_KEY diisi, widget harus membuka /answers.html?key=ISI_KEY
+const ANSWERS_KEY = process.env.ANSWERS_KEY || '';
+function answersData() {
+  const words = game.words.map(w => {
+    const [r, c] = w.cells[0];
+    const horiz = w.cells.length < 2 || w.cells[1][0] === r;
+    return { word: w.word, r, c, pos: String.fromCharCode(65 + r) + (c + 1), dir: horiz ? 'H' : 'V', found: !!w.found, by: w.found?.nick || '' };
+  }).sort((a, b) => a.r - b.r || a.c - b.c);
+  return { round: game.round, words };
+}
+// kirim state papan ke semua widget + jawaban ke widget yang berhak
+function sendState() {
+  broadcast('state', game.state());
+  const a = answersData();
+  wss.clients.forEach(ws => ws.canSeeAnswers && send(ws, 'answers', a));
+}
+
+wss.on('connection', (ws, req) => {
+  let key = ''; try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch {}
+  ws.canSeeAnswers = !ANSWERS_KEY || key === ANSWERS_KEY;
   send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status); send(ws, 'stats', stats);
+  if (ws.canSeeAnswers) send(ws, 'answers', answersData());
   if (podium) send(ws, 'podium', podium); // widget OBS yang di-refresh tetap menampilkan podium
 });
 
@@ -100,11 +121,11 @@ function cancelEnd() {
 
 // Setelah ada kata ketemu (dari chat atau gift): kirim ke semua widget, mulai ronde baru kalau papan selesai
 function announceFound(entry) {
-  broadcast('state', game.state());
+  sendState();
   broadcast('found', { word: entry.word, user: entry.found, via: entry.found.via });
   if (game.done) {
     broadcast('done', { seconds: ROUND_DELAY });
-    setTimeout(() => { if (frozen) return; game.newRound(); broadcast('state', game.state()); }, ROUND_DELAY * 1000);
+    setTimeout(() => { if (frozen) return; game.newRound(); sendState(); }, ROUND_DELAY * 1000);
   }
 }
 
@@ -132,7 +153,7 @@ function handleGift(user, giftName, diamonds, count) {
     if (!entry) break;
     opened++; announceFound(entry);
   }
-  if (!opened) broadcast('state', game.state());
+  if (!opened) sendState();
 }
 
 function disconnect() { clearTimeout(retry); wantUser = ''; try { conn?.disconnect(); } catch {} conn = null; setStatus({ state: 'idle' }); }
@@ -220,13 +241,13 @@ app.get('/api/tts', async (req, res) => {
 app.post('/api/difficulty', async (req, res) => {
   const l = req.body.level; if (!LEVELS[l]) return res.status(400).json({ ok: false });
   level = l; game.setWords(await loadWords(l)); game.newRound();
-  broadcast('level', level); broadcast('state', game.state()); res.json({ ok: true, level });
+  broadcast('level', level); sendState(); res.json({ ok: true, level });
 });
 app.get('/api/difficulty', (_, res) => res.json({ level }));
 app.post('/api/connect', (req, res) => { connect(req.body.username); res.json({ ok: true }); });
 app.post('/api/disconnect', (_, res) => { disconnect(); res.json({ ok: true }); });
-app.post('/api/new-round', (_, res) => { if (frozen) cancelEnd(); game.newRound(); broadcast('state', game.state()); res.json({ ok: true }); });
-app.post('/api/reset-scores', (_, res) => { game.scores.clear(); broadcast('state', game.state()); res.json({ ok: true }); });
+app.post('/api/new-round', (_, res) => { if (frozen) cancelEnd(); game.newRound(); sendState(); res.json({ ok: true }); });
+app.post('/api/reset-scores', (_, res) => { game.scores.clear(); sendState(); res.json({ ok: true }); });
 app.post('/api/reset-stats', (_, res) => { resetStats(); res.json({ ok: true }); });
 
 // End Live: countdown N detik, lalu tampilkan podium top 10
