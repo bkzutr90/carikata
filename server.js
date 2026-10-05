@@ -23,11 +23,30 @@ let level = DEFAULT_LEVEL, conn = null, status = { state: 'idle', username: '', 
 let frozen = false, endTimer = null, podium = null;
 const avatars = new Map(); // id/nick -> url foto (cadangan kalau game.scores tidak menyimpan avatar)
 
+// Statistik live untuk overlay chat (/chat.html)
+// viewers = penonton saat ini; totalViewers = unik yang terlihat sejak server konek (atau puncak viewers, mana yang lebih besar)
+const stats = { viewers: 0, totalViewers: 0, diamonds: 0, giftCount: 0, follows: 0, likes: 0 };
+const seen = new Set();
+let peakViewers = 0, statsTimer = null;
+
 const send = (ws, type, data) => ws.readyState === 1 && ws.send(JSON.stringify({ type, data }));
 const broadcast = (type, data) => wss.clients.forEach(ws => send(ws, type, data));
 const setStatus = p => { Object.assign(status, p); broadcast('status', status); };
+
+// kirim stats ke widget; ditahan 300ms supaya event like yang rapat tidak membanjiri
+const pushStats = now => {
+  if (now) { clearTimeout(statsTimer); statsTimer = null; return broadcast('stats', stats); }
+  if (statsTimer) return;
+  statsTimer = setTimeout(() => { statsTimer = null; broadcast('stats', stats); }, 300);
+};
+const markSeen = u => { if (!u?.id) return; seen.add(String(u.id)); stats.totalViewers = Math.max(seen.size, peakViewers); };
+function resetStats() {
+  Object.assign(stats, { viewers: 0, totalViewers: 0, diamonds: 0, giftCount: 0, follows: 0, likes: 0 });
+  seen.clear(); peakViewers = 0; pushStats(true);
+}
+
 wss.on('connection', ws => {
-  send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status);
+  send(ws, 'level', level); send(ws, 'state', game.state()); send(ws, 'status', status); send(ws, 'stats', stats);
   if (podium) send(ws, 'podium', podium); // widget OBS yang di-refresh tetap menampilkan podium
 });
 
@@ -103,6 +122,7 @@ function handleChat(user, text) {
 const GIFT_MAX_WORDS = Math.max(1, +process.env.GIFT_MAX_WORDS || 1);
 function handleGift(user, giftName, diamonds, count) {
   remember(user);
+  stats.giftCount += count; stats.diamonds += diamonds * count; pushStats();
   if (frozen) return broadcast('gift', { user, gift: giftName, count }); // End Live: tidak menambah poin
   game.addScore(user, diamonds * count);
   broadcast('gift', { user, gift: giftName, count });
@@ -117,11 +137,12 @@ function handleGift(user, giftName, diamonds, count) {
 
 function disconnect() { clearTimeout(retry); wantUser = ''; try { conn?.disconnect(); } catch {} conn = null; setStatus({ state: 'idle' }); }
 
-async function connect(username) {
+async function connect(username, isRetry = false) {
   username = String(username || '').replace(/^@/, '').trim();
   if (!username) return;
   try { conn?.removeAllListeners(); conn?.disconnect(); } catch {}
   clearTimeout(retry); wantUser = username;
+  if (!isRetry) resetStats(); // sambung ulang otomatis tidak mereset statistik
   setStatus({ state: 'connecting', username, error: '' });
 
   // Selalu kirim objek options eksplisit.
@@ -135,19 +156,34 @@ async function connect(username) {
 
   conn.on(WebcastEvent.CHAT, d => {
     if (DEBUG) console.log('[DEBUG chat]', JSON.stringify(d));
-    handleChat(getUser(d), d.comment ?? d.content ?? '');
+    const u = getUser(d);
+    markSeen(u); pushStats();
+    handleChat(u, d.comment ?? d.content ?? '');
   });
   conn.on(WebcastEvent.GIFT, d => {
     if (DEBUG) console.log('[DEBUG gift]', JSON.stringify(d));
     const type = d.giftType ?? d.giftDetails?.giftType;
     if (type === 1 && !d.repeatEnd) return; // gift beruntun: tunggu streak selesai
-    handleGift(getUser(d), d.giftName || d.giftDetails?.giftName || 'gift',
+    const u = getUser(d);
+    markSeen(u);
+    handleGift(u, d.giftName || d.giftDetails?.giftName || 'gift',
       d.diamondCount ?? d.giftDetails?.diamondCount ?? 1, d.repeatCount || 1);
   });
-  conn.on(WebcastEvent.LIKE, d => setStatus({ likes: d.totalLikeCount ?? status.likes }));
-  conn.on(WebcastEvent.ROOM_USER, d => setStatus({ viewers: d.viewerCount ?? 0 }));
+  conn.on(WebcastEvent.LIKE, d => {
+    markSeen(getUser(d));
+    stats.likes = d.totalLikeCount ?? (stats.likes + (d.likeCount || 1));
+    setStatus({ likes: stats.likes }); pushStats();
+  });
+  conn.on(WebcastEvent.MEMBER, d => { markSeen(getUser(d)); pushStats(); });
+  conn.on(WebcastEvent.FOLLOW, d => { markSeen(getUser(d)); stats.follows += 1; pushStats(); });
+  conn.on(WebcastEvent.ROOM_USER, d => {
+    const v = d.viewerCount ?? 0;
+    stats.viewers = v; peakViewers = Math.max(peakViewers, v);
+    stats.totalViewers = Math.max(seen.size, peakViewers);
+    setStatus({ viewers: v }); pushStats();
+  });
   conn.on(WebcastEvent.STREAM_END, () => setStatus({ state: 'ended' }));
-  conn.on('disconnected', () => { if (wantUser) { setStatus({ state: 'reconnecting' }); retry = setTimeout(() => connect(wantUser), 5000); } });
+  conn.on('disconnected', () => { if (wantUser) { setStatus({ state: 'reconnecting' }); retry = setTimeout(() => connect(wantUser, true), 5000); } });
   conn.on('error', e => console.error('[tiktok]', e?.info || e?.message || e));
 
   try {
@@ -191,6 +227,7 @@ app.post('/api/connect', (req, res) => { connect(req.body.username); res.json({ 
 app.post('/api/disconnect', (_, res) => { disconnect(); res.json({ ok: true }); });
 app.post('/api/new-round', (_, res) => { if (frozen) cancelEnd(); game.newRound(); broadcast('state', game.state()); res.json({ ok: true }); });
 app.post('/api/reset-scores', (_, res) => { game.scores.clear(); broadcast('state', game.state()); res.json({ ok: true }); });
+app.post('/api/reset-stats', (_, res) => { resetStats(); res.json({ ok: true }); });
 
 // End Live: countdown N detik, lalu tampilkan podium top 10
 app.post('/api/end-live', (req, res) => {
@@ -214,7 +251,7 @@ app.get('/api/answers', (_, res) => res.json(game.words.map(w => w.word))); // b
   game.setWords(await loadWords(level));
   game.round = 0; game.newRound();
   server.listen(PORT, () => {
-    console.log(`Dashboard   : http://localhost:${PORT}\nGame (OBS)  : http://localhost:${PORT}/?overlay=1\nLeaderboard : http://localhost:${PORT}/leaderboard.html\nSuara (OBS) : http://localhost:${PORT}/tts.html`);
+    console.log(`Dashboard   : http://localhost:${PORT}\nGame (OBS)  : http://localhost:${PORT}/?overlay=1\nLeaderboard : http://localhost:${PORT}/leaderboard.html\nChat (OBS)  : http://localhost:${PORT}/chat.html\nSuara (OBS) : http://localhost:${PORT}/tts.html`);
     if (process.env.TIKTOK_USERNAME) connect(process.env.TIKTOK_USERNAME);
   });
 })();
