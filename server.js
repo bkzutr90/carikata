@@ -13,6 +13,8 @@ const DEBUG = !!process.env.DEBUG_TIKTOK;
 const ROUND_DELAY = Math.max(1, +process.env.ROUND_DELAY_S || 10); // detik jeda sebelum ronde baru
 const END_SECONDS = Math.max(1, +process.env.END_SECONDS || 10);   // detik countdown End Live
 const HINT_MS = Math.max(5, +process.env.HINT_SECONDS || 15) * 1000; // hint otomatis kalau tidak ada yang menjawab
+const AUTO_EVERY = Math.max(1, +process.env.AUTO_EVERY || 5);      // Mode otomatis: ganti mode tiap N ronde
+const SPIN_S = Math.max(3, +process.env.SPIN_SECONDS || 6);        // lama animasi spin (detik)
 const app = express();
 app.use(cors(), express.json(), express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
@@ -24,6 +26,11 @@ let level = DEFAULT_LEVEL, conn = null, status = { state: 'idle', username: '', 
 let frozen = false, endTimer = null, podium = null;
 let scoreShown = false; // sudah menekan "Skor Akhir"? (syarat untuk ganti mode)
 const avatars = new Map(); // id/nick -> url foto (cadangan kalau game.scores tidak menyimpan avatar)
+
+// Mode otomatis: tiap AUTO_EVERY ronde selesai -> spin acak untuk ganti mode papan
+let autoMode = false, autoRounds = 0, spinning = false;
+const autoInfo = () => ({ on: autoMode, every: AUTO_EVERY, count: autoRounds });
+const broadcastAuto = () => broadcast('auto', autoInfo());
 
 // Hint otomatis: tiap HINT_MS tanpa ada kata ketemu -> kirim hint. Timer di-reset oleh sendState().
 let hintTimer = null;
@@ -82,7 +89,7 @@ function sendState() {
 wss.on('connection', (ws, req) => {
   let key = ''; try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch {}
   ws.canSeeAnswers = !ANSWERS_KEY || key === ANSWERS_KEY;
-  send(ws, 'level', level); send(ws, 'mode', game.mode); send(ws, 'state', game.state()); send(ws, 'status', status); send(ws, 'stats', stats);
+  send(ws, 'level', level); send(ws, 'mode', game.mode); send(ws, 'auto', autoInfo()); send(ws, 'state', game.state()); send(ws, 'status', status); send(ws, 'stats', stats);
   if (ws.canSeeAnswers) send(ws, 'answers', answersData());
   if (podium) send(ws, 'podium', podium); // widget OBS yang di-refresh tetap menampilkan podium
 });
@@ -135,20 +142,41 @@ function cancelEnd() {
   broadcast('endlive_cancel', {}); armHint();
 }
 
+// Mode otomatis: spin acak (hasil selalu beda dari mode sekarang), tampil di layar, lalu ganti mode + ronde baru
+function startSpin() {
+  if (spinning) return;
+  const others = MODES.filter(m => m !== game.mode);
+  const result = others[Math.floor(Math.random() * others.length)];
+  spinning = true; autoRounds = 0; broadcastAuto();
+  broadcast('spin', { result, seconds: SPIN_S, from: game.mode });
+  setTimeout(() => {
+    game.setMode(result);
+    spinning = false;
+    broadcast('mode', result);
+    game.newRound(); sendState();
+  }, SPIN_S * 1000);
+}
+
 // Setelah ada kata ketemu (dari chat atau gift): kirim ke semua widget, mulai ronde baru kalau papan selesai
 function announceFound(entry) {
   sendState();
   broadcast('found', { word: entry.word, user: entry.found, via: entry.found.via });
   if (game.done) {
-    broadcast('done', { seconds: ROUND_DELAY, players: topPlayers(10) });
-    setTimeout(() => { if (frozen) return; game.newRound(); sendState(); }, ROUND_DELAY * 1000);
+    let willSpin = false;
+    if (autoMode) { autoRounds++; willSpin = autoRounds >= AUTO_EVERY; broadcastAuto(); }
+    broadcast('done', { seconds: ROUND_DELAY, players: topPlayers(10), spin: willSpin });
+    setTimeout(() => {
+      if (frozen) return;
+      if (autoMode && autoRounds >= AUTO_EVERY) return startSpin();
+      game.newRound(); sendState();
+    }, ROUND_DELAY * 1000);
   }
 }
 
 function handleChat(user, text) {
   remember(user);
   broadcast('chat', { user, text });
-  if (frozen) return; // End Live / Skor Akhir: skor dibekukan
+  if (frozen || spinning) return; // End Live / Skor Akhir / sedang spin: jawaban tidak dihitung
   const res = game.guess(user, text);
   if (!res) return;
   if (res.type === 'cell') return broadcast('cell', { r: res.r, c: res.c });
@@ -262,9 +290,19 @@ app.post('/api/difficulty', async (req, res) => {
 app.get('/api/difficulty', (_, res) => res.json({ level }));
 app.post('/api/connect', (req, res) => { connect(req.body.username); res.json({ ok: true }); });
 app.post('/api/disconnect', (_, res) => { disconnect(); res.json({ ok: true }); });
-app.post('/api/new-round', (_, res) => { if (frozen) cancelEnd(); game.newRound(); sendState(); res.json({ ok: true }); });
+app.post('/api/new-round', (_, res) => {
+  if (spinning) return res.json({ ok: true }); // sedang spin: ronde baru dibuat otomatis setelah spin
+  if (frozen) cancelEnd(); game.newRound(); sendState(); res.json({ ok: true });
+});
 app.post('/api/reset-scores', (_, res) => { game.scores.clear(); sendState(); res.json({ ok: true }); });
 app.post('/api/reset-stats', (_, res) => { resetStats(); res.json({ ok: true }); });
+
+// Mode otomatis: aktif/mati. Penghitung ronde mulai dari 0 setiap kali diubah.
+app.post('/api/auto', (req, res) => {
+  autoMode = !!req.body?.on; autoRounds = 0; broadcastAuto();
+  res.json({ ok: true, ...autoInfo() });
+});
+app.get('/api/auto', (_, res) => res.json(autoInfo()));
 
 // End Live: countdown N detik, lalu tampilkan podium top 10
 app.post('/api/end-live', (req, res) => {
@@ -285,12 +323,14 @@ app.post('/api/final-score', (_, res) => {
 app.post('/api/mode', (req, res) => {
   const m = req.body.mode;
   if (!MODES.includes(m)) return res.status(400).json({ ok: false, error: 'Mode tidak dikenal' });
+  if (spinning) return res.status(409).json({ ok: false, error: 'Sedang spin mode otomatis, tunggu sebentar.' });
   if (m === game.mode) return res.json({ ok: true, mode: m });
   const hasScores = [...game.scores.values()].some(v => (v.points || 0) > 0);
   if (hasScores && !scoreShown)
     return res.status(409).json({ ok: false, error: 'Tekan "Skor Akhir" dulu sebelum ganti mode.' });
   game.setMode(m); game.scores.clear();
   clearTimeout(endTimer); endTimer = null; frozen = false; podium = null; scoreShown = false;
+  autoRounds = 0; broadcastAuto();
   broadcast('endlive_cancel', {}); broadcast('mode', m);
   game.newRound(); sendState(); res.json({ ok: true, mode: m });
 });
