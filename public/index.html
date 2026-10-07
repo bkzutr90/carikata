@@ -21,15 +21,45 @@
 h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shadow:0 2px 6px #000}h1 span{color:#ffd93b}
 #hint{margin:0;text-align:center;font-size:12px;font-weight:700;color:#ff8ac0}
 #auto{margin:0;text-align:center;font-size:11px;font-weight:700;color:#7ee8ff;display:none}
-#board{display:grid;grid-template-columns:20px repeat(15,1fr);gap:2px;position:relative}
-.lbl{font-size:11px;color:var(--mut);display:flex;align-items:center;justify-content:center}
-.c{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(13px,3.6vw,20px);background:#14141c;border-radius:4px;color:#f2f2f2;background-size:cover;background-position:center;transition:background .3s}
+
+/* ===== papan dengan background beranimasi ===== */
+#board{display:grid;grid-template-columns:20px repeat(15,1fr);gap:2px;position:relative;padding:8px;border-radius:16px;isolation:isolate;
+  background:linear-gradient(135deg,#0d0b1f,#15102f,#0b1a2e);box-shadow:0 0 0 1px #ffffff18,0 10px 30px #000a,inset 0 0 40px #0008}
+/* lapisan 1: cahaya warna melayang pelan */
+#board::before{content:"";position:absolute;inset:0;border-radius:16px;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(circle at 20% 30%,#fe2c5566 0,transparent 38%),
+    radial-gradient(circle at 80% 70%,#25f4ee55 0,transparent 38%),
+    radial-gradient(circle at 50% 50%,#7b2ff766 0,transparent 42%),
+    radial-gradient(circle at 70% 20%,#ffd93b33 0,transparent 30%);
+  background-size:200% 200%,200% 200%,200% 200%,200% 200%;
+  animation:blobs 14s ease-in-out infinite alternate}
+@keyframes blobs{
+  0%{background-position:0% 0%,100% 100%,50% 0%,100% 0%}
+  50%{background-position:60% 80%,40% 20%,0% 60%,20% 100%}
+  100%{background-position:100% 100%,0% 0%,50% 100%,0% 80%}
+}
+/* lapisan 2: bintang/partikel kecil yang bergeser + kelap-kelip */
+#board::after{content:"";position:absolute;inset:0;border-radius:16px;z-index:-1;pointer-events:none;
+  background-image:
+    radial-gradient(circle,#ffffffaa 0 1px,transparent 1.6px),
+    radial-gradient(circle,#7ee8ffaa 0 1.2px,transparent 2px),
+    radial-gradient(circle,#ff8ac0aa 0 1px,transparent 1.8px);
+  background-size:53px 53px,89px 89px,131px 131px;
+  background-position:0 0,20px 30px,60px 10px;
+  animation:stars 28s linear infinite,twinkle 3.2s ease-in-out infinite alternate}
+@keyframes stars{
+  to{background-position:106px 106px,-158px 208px,-202px 272px}
+}
+@keyframes twinkle{from{opacity:.35}to{opacity:.9}}
+.lbl{font-size:11px;color:var(--mut);display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
+.c{position:relative;z-index:1;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(13px,3.6vw,20px);background:rgba(14,14,22,.72);border-radius:4px;color:#f2f2f2;background-size:cover;background-position:center;transition:background .3s;backdrop-filter:blur(1.5px)}
 /* kata ketemu: warna tetap; efek wave hanya untuk kata yang baru ketemu */
-.c.f{background:var(--wc);color:#111}
+.c.f{background:var(--wc);color:#111;backdrop-filter:none}
 /* wave: tiap huruf naik-turun berurutan sepanjang kata (delay = urutan huruf) */
-.c.wave{animation:wave .8s cubic-bezier(.25,.8,.3,1) both;animation-delay:calc(var(--i) * 70ms);z-index:2}
+.c.wave{animation:wave .8s cubic-bezier(.25,.8,.3,1) both;animation-delay:calc(var(--i) * 70ms);z-index:3}
 @keyframes wave{
-  0%{transform:none;background:#14141c;color:#f2f2f2;box-shadow:0 0 0 0 transparent}
+  0%{transform:none;background:rgba(14,14,22,.72);color:#f2f2f2;box-shadow:0 0 0 0 transparent}
   35%{transform:translateY(-12px) scale(1.5);background:var(--wc);color:#111;box-shadow:0 0 16px 5px var(--wc)}
   68%{transform:translateY(3px) scale(.92);background:var(--wc);color:#111;box-shadow:0 0 6px 1px var(--wc)}
   100%{transform:none;background:var(--wc);color:#111;box-shadow:0 0 0 0 transparent}
@@ -76,6 +106,7 @@ h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shad
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}@keyframes ping{50%{transform:scale(1.25);background:#fff;color:#000}}
 body.ov{background:transparent}body.ov #ctl{display:none}
 @media(max-width:880px){#app{flex-direction:column;align-items:center}#ctl{position:static;width:min(560px,100%)}}
+@media(prefers-reduced-motion:reduce){#board::before,#board::after{animation:none}}
 </style></head>
 <body><div id="app">
 <aside id="ctl">
