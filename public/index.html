@@ -20,6 +20,7 @@
 .chip .p{margin-left:auto;background:#0003;border-radius:8px;padding:1px 5px;font-size:10px}
 h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shadow:0 2px 6px #000}h1 span{color:#ffd93b}
 #hint{margin:0;text-align:center;font-size:12px;font-weight:700;color:#ff8ac0}
+#auto{margin:0;text-align:center;font-size:11px;font-weight:700;color:#7ee8ff;display:none}
 #board{display:grid;grid-template-columns:20px repeat(15,1fr);gap:2px;position:relative}
 .lbl{font-size:11px;color:var(--mut);display:flex;align-items:center;justify-content:center}
 .c{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(13px,3.6vw,20px);background:#14141c;border-radius:4px;color:#f2f2f2;background-size:cover;background-position:center;transition:background .3s}
@@ -40,10 +41,26 @@ h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shad
 /* papan selesai + countdown ronde baru */
 #done{position:absolute;inset:0;display:none;flex-direction:column;gap:6px;text-align:center;align-items:center;justify-content:center;font-size:32px;font-weight:900;text-shadow:0 3px 12px #000;background:#0008;border-radius:8px;z-index:4}
 #done small{font-size:17px;font-weight:700;color:#ffd93b}
+/* tingkat kesulitan (di bawah papan, tengah) */
+#diff{align-self:center;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:240px;padding:10px 26px;margin-top:4px;border-radius:14px;background:#17171f;border:3px solid var(--dc,#2ee66b);box-shadow:0 0 18px -4px var(--dc,#2ee66b);text-align:center;transition:border-color .3s,box-shadow .3s}
+#diff small{font-size:11px;font-weight:800;letter-spacing:3px;color:var(--mut)}
+#diff b{font-size:26px;font-weight:900;letter-spacing:2px;color:var(--dc,#2ee66b);text-shadow:0 2px 8px #000}
+#diff i{font-style:normal;font-size:11px;font-weight:700;letter-spacing:1px;color:#c9c9d6}
+#diff.pop{animation:pop .5s}
 /* countdown end live */
 #cd{position:absolute;inset:0;display:none;flex-direction:column;gap:4px;text-align:center;align-items:center;justify-content:center;background:#000c;border-radius:8px;z-index:6}
 #cd small{font-size:16px;font-weight:800;letter-spacing:1.5px;color:#ff8ac0}
 #cd b{font-size:120px;line-height:1;color:#fff;text-shadow:0 4px 24px #fe2c55}
+/* spin mode otomatis */
+#spin{position:absolute;inset:0;display:none;flex-direction:column;gap:18px;text-align:center;align-items:center;justify-content:center;background:#000d;border-radius:8px;z-index:7}
+#spin h2{margin:0;font-size:24px;letter-spacing:3px;color:#ffd93b;text-shadow:0 2px 10px #000}
+#spin .sub{margin:0;font-size:12px;font-weight:700;letter-spacing:2px;color:#7ee8ff}
+#stiles{display:flex;gap:10px;width:94%}
+.st{flex:1;display:flex;flex-direction:column;gap:4px;align-items:center;padding:16px 4px;border-radius:12px;background:#1d1d27;border:3px solid #2c2c37;opacity:.4;transition:all .08s}
+.st span{font-size:34px}.st b{font-size:18px}.st small{font-size:10px;color:var(--mut)}
+.st.on{opacity:1;border-color:var(--tc);background:#2a2a36;transform:scale(1.08);box-shadow:0 0 22px var(--tc)}
+.st.win{animation:pop .5s}
+#sres{font-size:34px;font-weight:900;min-height:42px;text-shadow:0 3px 12px #000}
 /* podium top 10 */
 #pod{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:12px 10px;z-index:10;border-radius:12px;background:radial-gradient(ellipse at 50% 28%,#2b2b34 0%,#121217 55%,#08080b 100%)}
 #pod h2{margin:0;font-size:22px;letter-spacing:3px;color:#ffd93b;text-shadow:0 2px 10px #000;text-align:center}
@@ -56,8 +73,6 @@ h1{margin:2px 0 0;text-align:center;font-size:17px;letter-spacing:.5px;text-shad
 .pb .pn{max-width:100%;font-size:11px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pb .pp{font-size:11px;font-weight:800;color:var(--rc)}
 .pb.r1 .pn{font-size:13px}.pb.r1 .pp{font-size:13px}
-#chat{display:flex;flex-direction:column;gap:4px;min-height:120px;justify-content:flex-end}
-.m{align-self:flex-start;background:#0009;border-radius:14px;padding:5px 10px;font-size:13px;max-width:90%;animation:pop .25s}.m b{color:#aaa;margin-right:5px}.m.g{background:#7a2d00cc}
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}@keyframes ping{50%{transform:scale(1.25);background:#fff;color:#000}}
 body.ov{background:transparent}body.ov #ctl{display:none}
 @media(max-width:880px){#app{flex-direction:column;align-items:center}#ctl{position:static;width:min(560px,100%)}}
@@ -73,6 +88,7 @@ body.ov{background:transparent}body.ov #ctl{display:none}
     <option value="sedang">Mode: Sedang (ada serong)</option>
     <option value="sulit">Mode: Sulit (serong + terbalik)</option>
   </select>
+  <button id="ba" class="g">🎲 Mode otomatis: MATI</button>
   <button id="bs">🏁 Skor Akhir</button>
   <button id="bn" class="g">Ronde baru</button><button id="br" class="g">Reset skor</button>
   <hr style="border-color:#2a2a36;width:100%">
@@ -93,10 +109,12 @@ body.ov{background:transparent}body.ov #ctl{display:none}
   <div id="chips"><div id="track"></div></div>
   <h1>CARI KATA TERSEMBUNYI <span id="cnt">0/20</span></h1>
   <p id="hint">KETIK KATA YANG KAMU LIHAT</p>
+  <p id="auto"></p>
   <div id="board"></div>
+  <div id="diff"><small>TINGKAT KESULITAN</small><b id="dfn">🟢 MUDAH</b><i id="dfd">TANPA SERONG</i></div>
   <div id="done"><div>PAPAN SELESAI</div><small id="dn"></small></div>
-  <div id="chat"></div>
   <div id="cd"><small>LIVE BERAKHIR DALAM</small><b id="cdn">10</b></div>
+  <div id="spin"><h2>🎲 GANTI MODE!</h2><p class="sub">MODE DIPUTAR ACAK</p><div id="stiles"></div><div id="sres"></div></div>
   <div id="pod"><h2 id="pt">🏆 PERINGKAT AKHIR</h2><div class="rows" id="podrows"></div><p class="thx" id="pnext" style="color:#ff8ac0;font-size:13px"></p><p class="thx" id="pthx">TERIMA KASIH SUDAH BERMAIN</p></div>
 </main></div>
 <script src="/tts.js"></script>
@@ -163,6 +181,7 @@ function render(s){
   const gkey=s.round+':'+s.grid.map(r=>r.join('')).join('');
   if(!$('c0_0')||$('board').dataset.k!==gkey){
     cancelRoundPod(true); // papan baru: tutup podium sementara
+    hideSpin();           // papan baru: tutup layar spin mode
     drawBoard(s);$('board').dataset.k=gkey;resetChips();
     waved=new Set(s.found.map(f=>f.word)); // refresh/ronde baru: tanpa wave
     clearTimeout(hintT);$('hint').textContent=HINT_DEF; // hint lama tidak berlaku di papan baru
@@ -188,7 +207,6 @@ function syncChips(s){
   const added=s.found.filter(f=>placeChip({word:f.word,user:f.user,at:f.user.at})).map(f=>f.word);
   if(added.length)drawRing(added.length===1?added[0]:null);
 }
-function addMsg(html,cls=''){const c=$('chat');c.insertAdjacentHTML('beforeend',`<div class="m ${cls}">${html}</div>`);while(c.children.length>6)c.firstChild.remove();}
 
 // ---- hint otomatis (dikirim server kalau 15 detik tidak ada yang menjawab) ----
 let hintT=null;
@@ -201,10 +219,55 @@ function showHint(h){
   clearTimeout(hintT);hintT=setTimeout(()=>{$('hint').textContent=HINT_DEF;},10000);
 }
 
-// ---- countdown papan selesai -> ronde baru ----
-function startDone(sec){
+// ---- tingkat kesulitan (di bawah papan) + mode otomatis: info di layar + spin acak ----
+const MN={mudah:'MUDAH',sedang:'SEDANG',sulit:'SULIT'};
+const SPM={mudah:{e:'🟢',c:'#2ee66b',d:'TANPA SERONG'},sedang:{e:'🟠',c:'#ff8a1f',d:'ADA SERONG'},sulit:{e:'🔴',c:'#ff4d6d',d:'SERONG + TERBALIK'}};
+const SPORD=['mudah','sedang','sulit'];
+let autoS={on:false,every:5,count:0},curMode='mudah',spinT=null,shownMode=null;
+function renderDiff(){
+  const m=SPM[curMode]||SPM.mudah,d=$('diff');
+  d.style.setProperty('--dc',m.c);
+  $('dfn').textContent=`${m.e} ${MN[curMode]||''}`;
+  $('dfd').textContent=m.d;
+  if(shownMode!==null&&shownMode!==curMode){d.classList.remove('pop');void d.offsetWidth;d.classList.add('pop');} // animasi saat mode berganti
+  shownMode=curMode;
+}
+function renderAuto(){
+  const b=$('ba'),a=$('auto');
+  b.textContent=autoS.on?'🎲 Mode otomatis: AKTIF':'🎲 Mode otomatis: MATI';
+  b.style.background=autoS.on?'#1fa855':'';
+  a.style.display=autoS.on?'block':'none';
+  a.textContent=`🎲 ACAK MODE TIAP ${autoS.every} RONDE (${autoS.count}/${autoS.every})`;
+  renderDiff();
+}
+function hideSpin(){clearTimeout(spinT);spinT=null;$('spin').style.display='none';}
+function startSpin(d){
+  cancelRoundPod(true);clearInterval(dnT);$('dn').textContent='';$('done').style.display='none';
+  hideSpin();
+  const N=22,ri=SPORD.indexOf(d.result);
+  const k=Math.max(.3,((d.seconds||6)*1000-1800)/3640); // skala supaya animasi muat di durasi spin
+  $('stiles').innerHTML=SPORD.map(m=>`<div class="st" id="st_${m}" style="--tc:${SPM[m].c}"><span>${SPM[m].e}</span><b>${MN[m]}</b><small>${SPM[m].d}</small></div>`).join('');
+  $('sres').textContent='';$('sres').style.color='';
+  $('spin').style.display='flex';
+  let i=0;
+  const step=()=>{
+    SPORD.forEach(m=>$('st_'+m).classList.remove('on'));
+    const m=SPORD[(ri+i)%3];
+    $('st_'+m).classList.add('on');SFX.tick();
+    if(i===N-1){ // berhenti di hasil
+      $('st_'+m).classList.add('win');
+      $('sres').textContent=`MODE ${MN[m]}!`;$('sres').style.color=SPM[m].c;
+      SFX.done();return;
+    }
+    i++;spinT=setTimeout(step,(60+i*i*.7)*k); // makin lama makin pelan
+  };
+  step();
+}
+
+// ---- countdown papan selesai -> ronde baru / putar mode ----
+function startDone(sec,spin){
   clearInterval(dnT);let n=sec;
-  const t=()=>{$('dn').textContent=n>0?`Ronde baru dalam ${n}`:'';};t();
+  const t=()=>{$('dn').textContent=n>0?`${spin?'Putar mode':'Ronde baru'} dalam ${n}`:'';};t();
   dnT=setInterval(()=>{n--;t();if(n<=0)clearInterval(dnT);},1000);
 }
 
@@ -241,14 +304,14 @@ function cancelRoundPod(hide){
   if(roundPod&&hide)hidePodium();
   roundPod=false;$('pnext').textContent='';
 }
-function startRoundPodium(players,sec){
+function startRoundPodium(players,sec,spin){
   cancelRoundPod(false);
   if($('pod').style.display==='flex')return; // podium akhir live sedang tampil: jangan ditimpa
   const delay=Math.min(2500,sec*250); // beri waktu efek wave kata terakhir terlihat dulu
   rpT=setTimeout(()=>{
     roundPod=true;let n=Math.max(1,Math.round(sec-delay/1000));
     showPodium(players,'round');
-    const t=()=>{$('pnext').textContent=n>0?`RONDE BARU DALAM ${n}`:'';};t();
+    const t=()=>{$('pnext').textContent=n>0?`${spin?'PUTAR MODE':'RONDE BARU'} DALAM ${n}`:'';};t();
     rpI=setInterval(()=>{n--;t();if(n<=0)clearInterval(rpI);},1000);
   },delay);
 }
@@ -269,13 +332,13 @@ function connectWS(){
   ws.onmessage=e=>{const{type,data}=JSON.parse(e.data);
     if(type==='state')render(data);
     if(type==='level')$('lv').value=data;
-    if(type==='mode'){$('md').value=data;$('md').dataset.cur=data;}
+    if(type==='mode'){$('md').value=data;$('md').dataset.cur=data;curMode=data;renderAuto();}
+    if(type==='auto'){autoS=data;renderAuto();}
+    if(type==='spin')startSpin(data);
     if(type==='found'){data.via==='gift'?SFX.gift():SFX.reveal();clearTimeout(hintT);$('hint').textContent=HINT_DEF;}
     if(type==='hint')showHint(data);
-    if(type==='done'){SFX.done();const sec=data&&data.seconds||10;startDone(sec);startRoundPodium(data&&data.players||[],sec);}
+    if(type==='done'){SFX.done();const sec=data&&data.seconds||10,sp=!!(data&&data.spin);startDone(sec,sp);startRoundPodium(data&&data.players||[],sec,sp);}
     if(type==='chat'){if(!ov)TTS.say(data.user.nick,data.text);}
-    if(type==='chat')addMsg(`<b>${esc(data.user.nick)}</b>${esc(data.text)}`);
-    if(type==='gift')addMsg(`🎁 <b>${esc(data.user.nick)}</b>kirim ${esc(data.gift||'gift')} x${data.count}`,'g');
     if(type==='cell'){const e=$(`c${data.r}_${data.c}`);if(e){e.classList.remove('ping');void e.offsetWidth;e.classList.add('ping');}SFX.tick();}
     if(type==='endlive')startCountdown(data.seconds||10);
     if(type==='endlive_cancel')cancelEndUI();
@@ -284,10 +347,13 @@ function connectWS(){
   };
   ws.onclose=()=>setTimeout(connectWS,2000);
 }
+renderDiff();
 connectWS();
 $('bc').onclick=()=>post('connect',{username:$('u').value});
 $('bd').onclick=()=>post('disconnect');$('lv').onchange=e=>post('difficulty',{level:e.target.value});$('bn').onclick=()=>post('new-round');$('br').onclick=()=>post('reset-scores');
 $('be').onclick=()=>post('end-live',{seconds:+$('es').value||10});$('bx').onclick=()=>post('end-live/cancel');
+// Mode otomatis: toggle; tiap N ronde selesai, mode diacak lewat spin yang tampil di layar
+$('ba').onclick=()=>post('auto',{on:!autoS.on});
 // Skor Akhir (beda dari End Live): podium langsung tanpa countdown, skor dibekukan
 $('bs').onclick=()=>post('final-score');
 // Ganti mode: ditolak server kalau skor belum ditampilkan lewat Skor Akhir
